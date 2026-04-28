@@ -1,0 +1,41 @@
+
+/* Add these to src/styles.css for the inline milestone form */
+
+.project-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.inline-form {
+  width: 100%;
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.inline-form label {
+  display: grid;
+  gap: 5px;
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: #334155;
+}
+
+.inline-form input {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 9px 10px;
+  font: inherit;
+}
+
+.form-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
