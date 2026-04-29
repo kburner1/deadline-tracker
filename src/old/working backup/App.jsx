@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { createRoot } from "react-dom/client";
 import {
   Bell,
   Building2,
@@ -9,6 +8,7 @@ import {
   Plus,
   Users,
 } from "lucide-react";
+
 import {
   endOfMonth,
   eachDayOfInterval,
@@ -17,6 +17,7 @@ import {
   isSameDay,
   startOfMonth,
 } from "date-fns";
+
 import { supabase } from "./lib/supabaseClient";
 import "./styles.css";
 
@@ -99,6 +100,67 @@ function countCompletedSubtasks(subtasks = []) {
   return subtasks.filter((subtask) => subtask.is_complete).length;
 }
 
+function getSortedSubtasks(tasks = [], parentTaskId) {
+  return tasks
+    .filter((subtask) => subtask.parent_task_id === parentTaskId)
+    .sort(
+      (a, b) =>
+        (a.created_at || "").localeCompare(b.created_at || "") ||
+        (a.label || "").localeCompare(b.label || "")
+    );
+}
+
+function formatActivityDate(dateValue) {
+  if (!dateValue) return "";
+  return format(new Date(dateValue), "MMM d, h:mm a");
+}
+
+function getActivityText(item) {
+  const details = item.details ? ` — ${item.details}` : "";
+
+  const labels = {
+    task_completed: "Task completed",
+    task_reopened: "Task reopened",
+    task_updated: "Task edited",
+    subtask_completed: "Subtask completed",
+    subtask_reopened: "Subtask reopened",
+    subtask_updated: "Subtask edited",
+    milestone_date_changed: "Milestone date changed",
+    task_waiting_started: "Task marked waiting",
+    task_waiting_cleared: "Task waiting cleared",
+  };
+
+  return `${labels[item.action] || item.action || "Activity"}${details}`;
+}
+
+function ActivityPanel({ logs = [] }) {
+  const recentLogs = [...logs]
+    .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""))
+    .slice(0, 8);
+
+  return (
+    <div className="activity-panel">
+      <div className="activity-header">
+        <h4>Activity</h4>
+        <span>{recentLogs.length}</span>
+      </div>
+
+      {recentLogs.length === 0 ? (
+        <p className="muted-text">No activity yet. The audit goblin is waiting.</p>
+      ) : (
+        <div className="activity-list">
+          {recentLogs.map((item) => (
+            <div className="activity-row" key={item.id}>
+              <span>{getActivityText(item)}</span>
+              <em>{formatActivityDate(item.created_at)}</em>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function isTaskOverdue(task) {
   if (!task?.due_date || task.is_complete || task.is_waiting || task.parent_task_id) {
     return false;
@@ -122,6 +184,26 @@ function daysFromToday(dateValue) {
   if (!date) return null;
   const today = todayDateOnly();
   return Math.round((date - today) / (1000 * 60 * 60 * 24));
+}
+
+function daysWaiting(task) {
+  if (!task?.waiting_since) return 0;
+
+  const start = new Date(task.waiting_since);
+  if (Number.isNaN(start.getTime())) return 0;
+
+  const now = new Date();
+  return Math.max(0, Math.floor((now - start) / (1000 * 60 * 60 * 24)));
+}
+
+function isTaskWaitingTooLong(task, thresholdDays = 5) {
+  return Boolean(
+    task &&
+      task.is_waiting &&
+      !task.is_complete &&
+      !task.parent_task_id &&
+      daysWaiting(task) >= thresholdDays
+  );
 }
 
 function collectProjectTasks(projects) {
@@ -155,54 +237,128 @@ function collectProjectTasks(projects) {
     );
 }
 
-function TaskAttentionList({ title, tasks, emptyText, onCompleteTask = () => {}, onJumpToProject = () => {} }) {
+function TaskAttentionList({
+  title,
+  tasks,
+  emptyText,
+  defaultCollapsed = false,
+  onCompleteTask = () => {},
+  onJumpToProject = () => {},
+}) {
+  const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
+
   return (
-    <div className="attention-panel">
-      <div className="attention-panel-header">
-        <h3>{title}</h3>
-        <span>{tasks.length}</span>
-      </div>
+    <div className={`attention-panel ${isCollapsed ? "attention-panel-collapsed" : ""}`}>
+      <button
+        type="button"
+        className="attention-panel-header attention-panel-toggle"
+        onClick={() => setIsCollapsed((current) => !current)}
+        aria-expanded={!isCollapsed}
+      >
+        <span className="attention-title-wrap">
+          <span className="attention-disclosure-arrow">
+            {isCollapsed ? "▶" : "▼"}
+          </span>
+          <h3>{title}</h3>
+        </span>
+        <span className="attention-count">{tasks.length}</span>
+      </button>
 
-      {tasks.length === 0 ? (
-        <p className="muted-text">{emptyText}</p>
-      ) : (
-        <div className="deadline-list compact-list">
-          {tasks.map((task) => (
-            <div
-              className="deadline-row clickable-row dashboard-task-row"
-              key={task.id}
-              onClick={() => onJumpToProject(task.project_id, task.id)}
-            >
-              <div>
-                <strong>{task.label}</strong>
-                <span>
-                  {task.project_title} · {task.scope_name}
-                  {task.milestones?.label ? ` · ${task.milestones.label}` : ""}
-                </span>
-              </div>
-
-              <div className="dashboard-task-actions">
-                <div className="deadline-date">
-                  {task.due_date
-                    ? format(parseDateOnly(task.due_date), "EEE, MMM d")
-                    : "No date"}
+      {!isCollapsed && (
+        tasks.length === 0 ? (
+          <p className="muted-text">{emptyText}</p>
+        ) : (
+          <div className="deadline-list compact-list">
+            {tasks.map((task) => (
+              <div
+                className="deadline-row clickable-row dashboard-task-row"
+                key={task.id}
+                onClick={() => onJumpToProject(task.project_id, task.id)}
+              >
+                <div>
+                  <strong>{task.label}</strong>
+                  <span>
+                    {task.project_title} · {task.scope_name}
+                    {task.milestones?.label ? ` · ${task.milestones.label}` : ""}
+                  </span>
                 </div>
 
-                <label
-                  className="dashboard-complete-check"
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  <input
-                    type="checkbox"
-                    checked={false}
-                    onChange={() => onCompleteTask(task)}
-                  />
-                  Complete
-                </label>
+                <div className="dashboard-task-actions">
+                  <div className="deadline-date">
+                    {task.due_date
+                      ? format(parseDateOnly(task.due_date), "EEE, MMM d")
+                      : "No date"}
+                  </div>
+
+                  <label
+                    className="dashboard-complete-check"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={false}
+                      onChange={() => onCompleteTask(task)}
+                    />
+                    Complete
+                  </label>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
+function StaleWaitingList({ tasks, defaultCollapsed = false, onJumpToProject = () => {} }) {
+  const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
+
+  return (
+    <div className={`attention-panel waiting-too-long-panel ${isCollapsed ? "attention-panel-collapsed" : ""}`}>
+      <button
+        type="button"
+        className="attention-panel-header attention-panel-toggle"
+        onClick={() => setIsCollapsed((current) => !current)}
+        aria-expanded={!isCollapsed}
+      >
+        <span className="attention-title-wrap">
+          <span className="attention-disclosure-arrow">
+            {isCollapsed ? "▶" : "▼"}
+          </span>
+          <h3>Waiting Too Long</h3>
+        </span>
+        <span className="attention-count">{tasks.length}</span>
+      </button>
+
+      {!isCollapsed && (
+        tasks.length === 0 ? (
+          <p className="muted-text">No waiting tasks older than 5 days. That is suspiciously adult.</p>
+        ) : (
+          <div className="deadline-list compact-list">
+            {tasks.map((task) => (
+              <div
+                className="deadline-row clickable-row dashboard-task-row waiting-too-long-row"
+                key={task.id}
+                onClick={() => onJumpToProject(task.project_id, task.id)}
+              >
+                <div>
+                  <strong>{task.label}</strong>
+                  <span>
+                    {task.project_title} · {task.scope_name}
+                    {task.milestones?.label ? ` · ${task.milestones.label}` : ""}
+                  </span>
+                </div>
+
+                <div className="dashboard-task-actions">
+                  <div className="deadline-date waiting-days">
+                    Waiting {daysWaiting(task)} days
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )
       )}
     </div>
   );
@@ -334,6 +490,15 @@ function Dashboard({ events, projects, teamMembers = [], onJumpToProject = () =>
     return days >= 0 && days <= 7;
   });
 
+  const staleWaitingTasks = allTasks
+    .filter((task) => isTaskWaitingTooLong(task))
+    .sort(
+      (a, b) =>
+        daysWaiting(b) - daysWaiting(a) ||
+        (a.project_title || "").localeCompare(b.project_title || "") ||
+        (a.label || "").localeCompare(b.label || "")
+    );
+
   const upcomingMilestones = sortedEvents
     .filter((event) => {
       const days = daysFromToday(event.due_date);
@@ -436,6 +601,11 @@ function Dashboard({ events, projects, teamMembers = [], onJumpToProject = () =>
           tasks={dueThisWeekTasks}
           emptyText="No incomplete tasks due in the next 7 days."
           onCompleteTask={completeDashboardTask}
+          onJumpToProject={onJumpToProject}
+        />
+
+        <StaleWaitingList
+          tasks={staleWaitingTasks}
           onJumpToProject={onJumpToProject}
         />
       </div>
@@ -622,12 +792,14 @@ function Dashboard({ events, projects, teamMembers = [], onJumpToProject = () =>
   );
 }
 
-function Projects({ projects, teamMembers = [], onDataChanged }) {
+function Projects({ projects, teamMembers = [], activityLogs = [], onDataChanged }) {
   const [milestoneProjectId, setMilestoneProjectId] = useState(null);
   const [milestoneLabel, setMilestoneLabel] = useState("");
   const [milestoneDate, setMilestoneDate] = useState("");
   const [selectedBuildingIds, setSelectedBuildingIds] = useState([]);
   const [savingMilestone, setSavingMilestone] = useState(false);
+  const [editingBuildingId, setEditingBuildingId] = useState(null);
+  const [editingBuildingName, setEditingBuildingName] = useState("");
   const [editingMilestoneId, setEditingMilestoneId] = useState(null);
   const [taskBuildingId, setTaskBuildingId] = useState(null);
   const [taskLabel, setTaskLabel] = useState("");
@@ -642,6 +814,8 @@ function Projects({ projects, teamMembers = [], onDataChanged }) {
   const [editingSubtaskId, setEditingSubtaskId] = useState(null);
   const [editingSubtaskLabel, setEditingSubtaskLabel] = useState("");
   const [collapsedSubtaskParentIds, setCollapsedSubtaskParentIds] = useState([]);
+  const [collapsedMilestoneProjectIds, setCollapsedMilestoneProjectIds] = useState([]);
+  const [collapsedBuildingIds, setCollapsedBuildingIds] = useState([]);
   const [collapsedProjectIds, setCollapsedProjectIds] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem("deadlineTrackerCollapsedProjects") || "[]");
@@ -651,10 +825,16 @@ function Projects({ projects, teamMembers = [], onDataChanged }) {
   });
   const [showCompletedTasks, setShowCompletedTasks] = useState(true);
   const [hideCompletedProjects, setHideCompletedProjects] = useState(false);
+  const [showArchivedProjects, setShowArchivedProjects] = useState(false);
   const [showOnlyOverdueProjects, setShowOnlyOverdueProjects] = useState(false);
+  const [smartView, setSmartView] = useState("all");
   const [assigneeFilter, setAssigneeFilter] = useState("all");
+  const [selectedTaskIds, setSelectedTaskIds] = useState([]);
+  const [bulkAssigneeId, setBulkAssigneeId] = useState("");
   const [projectSearch, setProjectSearch] = useState("");
   const [newTeamMemberName, setNewTeamMemberName] = useState("");
+  const [editingTeamMemberId, setEditingTeamMemberId] = useState(null);
+  const [editingTeamMemberName, setEditingTeamMemberName] = useState("");
   const [showProjectForm, setShowProjectForm] = useState(false);
   const [projectForm, setProjectForm] = useState({
     title: "",
@@ -671,6 +851,41 @@ function Projects({ projects, teamMembers = [], onDataChanged }) {
       JSON.stringify(collapsedProjectIds)
     );
   }, [collapsedProjectIds]);
+
+  useEffect(() => {
+    setEditingSubtaskId(null);
+    setEditingSubtaskLabel("");
+  }, [projects]);
+
+  useEffect(() => {
+    function closeOpenMenusOnOutsideClick(event) {
+      const openMenus = document.querySelectorAll(
+        "details.compact-menu[open], details.task-actions-menu[open]"
+      );
+
+      openMenus.forEach((menu) => {
+        if (!menu.contains(event.target)) {
+          menu.removeAttribute("open");
+        }
+      });
+    }
+
+    function closeOpenMenusOnEscape(event) {
+      if (event.key !== "Escape") return;
+
+      document
+        .querySelectorAll("details.compact-menu[open], details.task-actions-menu[open]")
+        .forEach((menu) => menu.removeAttribute("open"));
+    }
+
+    document.addEventListener("mousedown", closeOpenMenusOnOutsideClick);
+    document.addEventListener("keydown", closeOpenMenusOnEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", closeOpenMenusOnOutsideClick);
+      document.removeEventListener("keydown", closeOpenMenusOnEscape);
+    };
+  }, []);
 
   function updateProjectForm(field, value) {
     setProjectForm((current) => ({
@@ -750,19 +965,35 @@ function Projects({ projects, teamMembers = [], onDataChanged }) {
     }
   }
 
-  async function editBuilding(building) {
-    const name = prompt("Building name?", building.name);
-    if (!name?.trim()) return;
+  function editBuilding(building) {
+    setEditingBuildingId(building.id);
+    setEditingBuildingName(building.name || "");
+    setCollapsedBuildingIds((current) =>
+      current.filter((id) => id !== building.id)
+    );
+  }
+
+  function cancelEditBuilding() {
+    setEditingBuildingId(null);
+    setEditingBuildingName("");
+  }
+
+  async function saveEditedBuilding(building) {
+    if (!editingBuildingName.trim()) {
+      alert("Please enter a building name.");
+      return;
+    }
 
     const { error } = await supabase
       .from("buildings")
-      .update({ name: name.trim() })
+      .update({ name: editingBuildingName.trim() })
       .eq("id", building.id);
 
     if (error) {
       console.error("Failed to update building:", error);
       alert("Failed to update building");
     } else {
+      cancelEditBuilding();
       await onDataChanged();
     }
   }
@@ -856,6 +1087,11 @@ function Projects({ projects, teamMembers = [], onDataChanged }) {
   }
 
   async function saveMilestone(projectId) {
+    const currentProject = projects.find((project) => project.id === projectId);
+    const previousMilestone = currentProject?.milestones?.find(
+      (milestone) => milestone.id === editingMilestoneId
+    );
+    const previousDueDate = previousMilestone?.due_date || null;
     const dueDate = parseUserDate(milestoneDate);
 
     if (!milestoneLabel.trim()) {
@@ -883,6 +1119,15 @@ function Projects({ projects, teamMembers = [], onDataChanged }) {
         if (error) throw error;
 
         await replaceMilestoneBuildingLinks(editingMilestoneId);
+
+        if (previousDueDate && previousDueDate !== dueDate) {
+          await recordActivity({
+            projectId,
+            milestoneId: editingMilestoneId,
+            action: "milestone_date_changed",
+            details: `${milestoneLabel.trim()} moved from ${formatDateForInput(previousDueDate)} to ${formatDateForInput(dueDate)}`,
+          });
+        }
       } else {
         const { data, error } = await supabase
           .from("milestones")
@@ -1000,6 +1245,15 @@ function Projects({ projects, teamMembers = [], onDataChanged }) {
       console.error("Failed to save task:", error);
       alert("Failed to save task");
     } else {
+      if (editingTaskId) {
+        await recordActivity({
+          projectId,
+          taskId: editingTaskId,
+          action: "task_updated",
+          details: taskLabel.trim(),
+        });
+      }
+
       closeTaskForm();
       await onDataChanged();
     }
@@ -1008,15 +1262,28 @@ function Projects({ projects, teamMembers = [], onDataChanged }) {
   }
 
   async function toggleTask(task) {
+    const nextComplete = !task.is_complete;
     const { error } = await supabase
       .from("tasks")
-      .update({ is_complete: !task.is_complete })
+      .update({ is_complete: nextComplete })
       .eq("id", task.id);
 
     if (error) {
       console.error("Failed to update task:", error);
       alert("Failed to update task");
     } else {
+      await recordActivity({
+        projectId: task.project_id,
+        taskId: task.id,
+        action: task.parent_task_id
+          ? nextComplete
+            ? "subtask_completed"
+            : "subtask_reopened"
+          : nextComplete
+            ? "task_completed"
+            : "task_reopened",
+        details: task.label || "Untitled task",
+      });
       await onDataChanged();
     }
   }
@@ -1127,6 +1394,10 @@ function Projects({ projects, teamMembers = [], onDataChanged }) {
     };
   }
 
+  function getProjectTasksFromAll(projectList) {
+    return (projectList || []).flatMap((project) => getProjectTasks(project));
+  }
+
   async function addTeamMember() {
     if (!newTeamMemberName.trim()) {
       alert("Please enter a team member name.");
@@ -1145,6 +1416,80 @@ function Projects({ projects, teamMembers = [], onDataChanged }) {
     } else {
       setNewTeamMemberName("");
       await onDataChanged();
+    }
+  }
+
+  function startEditTeamMember(member) {
+    setEditingTeamMemberId(member.id);
+    setEditingTeamMemberName(member.name || "");
+  }
+
+  function cancelEditTeamMember() {
+    setEditingTeamMemberId(null);
+    setEditingTeamMemberName("");
+  }
+
+  async function saveTeamMemberName(member) {
+    if (!editingTeamMemberName.trim()) {
+      alert("Please enter a team member name.");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("team_members")
+      .update({ name: editingTeamMemberName.trim() })
+      .eq("id", member.id);
+
+    if (error) {
+      console.error("Failed to update team member:", error);
+      alert("Failed to update team member");
+    } else {
+      cancelEditTeamMember();
+      await onDataChanged();
+    }
+  }
+
+  async function deleteTeamMember(member) {
+    const assignedTaskCount = getProjectTasksFromAll(projects).filter(
+      (task) => task.assigned_to === member.id
+    ).length;
+
+    if (assignedTaskCount > 0) {
+      alert(`${member.name} still has ${assignedTaskCount} assigned task${assignedTaskCount === 1 ? "" : "s"}. Reassign or clear those tasks first.`);
+      return;
+    }
+
+    const confirmed = confirm(`Delete team member "${member.name}"?`);
+    if (!confirmed) return;
+
+    const { error } = await supabase
+      .from("team_members")
+      .delete()
+      .eq("id", member.id);
+
+    if (error) {
+      console.error("Failed to delete team member:", error);
+      alert("Failed to delete team member");
+    } else {
+      await onDataChanged();
+    }
+  }
+
+  async function recordActivity({ projectId, taskId = null, milestoneId = null, action, details = "" }) {
+    if (!projectId || !action) return;
+
+    const { error } = await supabase.from("activity_log").insert([
+      {
+        project_id: projectId,
+        task_id: taskId,
+        milestone_id: milestoneId,
+        action,
+        details,
+      },
+    ]);
+
+    if (error) {
+      console.error("Failed to record activity:", error);
     }
   }
 
@@ -1167,6 +1512,22 @@ function Projects({ projects, teamMembers = [], onDataChanged }) {
       current.includes(parentTaskId)
         ? current.filter((id) => id !== parentTaskId)
         : [...current, parentTaskId]
+    );
+  }
+
+  function toggleMilestonesCollapsed(projectId) {
+    setCollapsedMilestoneProjectIds((current) =>
+      current.includes(projectId)
+        ? current.filter((id) => id !== projectId)
+        : [...current, projectId]
+    );
+  }
+
+  function toggleBuildingCollapsed(buildingId) {
+    setCollapsedBuildingIds((current) =>
+      current.includes(buildingId)
+        ? current.filter((id) => id !== buildingId)
+        : [...current, buildingId]
     );
   }
 
@@ -1205,6 +1566,12 @@ function Projects({ projects, teamMembers = [], onDataChanged }) {
       console.error("Failed to update subtask:", error);
       alert("Failed to update subtask");
     } else {
+      await recordActivity({
+        projectId: subtask.project_id,
+        taskId: subtask.id,
+        action: "subtask_updated",
+        details: `${subtask.label || "Untitled subtask"} → ${editingSubtaskLabel.trim()}`,
+      });
       closeEditSubtaskForm();
       await onDataChanged();
     }
@@ -1236,17 +1603,209 @@ function Projects({ projects, teamMembers = [], onDataChanged }) {
   }
 
   async function toggleTaskWaiting(task) {
+    const nextIsWaiting = !task.is_waiting;
+
     const { error } = await supabase
       .from("tasks")
-      .update({ is_waiting: !task.is_waiting })
+      .update({
+        is_waiting: nextIsWaiting,
+        waiting_since: nextIsWaiting ? new Date().toISOString() : null,
+      })
       .eq("id", task.id);
 
     if (error) {
       console.error("Failed to update waiting tag:", error);
       alert("Failed to update waiting tag");
     } else {
+      await recordActivity({
+        projectId: task.project_id,
+        taskId: task.id,
+        action: nextIsWaiting ? "task_waiting_started" : "task_waiting_cleared",
+        details: task.label,
+      });
+
       await onDataChanged();
     }
+  }
+
+  async function toggleArchiveProject(project) {
+    const nextArchived = !project.is_archived;
+    const confirmed = confirm(
+      nextArchived
+        ? `Archive "${project.title}"? It will be hidden from the active list, but the data stays safe.`
+        : `Unarchive "${project.title}"?`
+    );
+
+    if (!confirmed) return;
+
+    const { error } = await supabase
+      .from("projects")
+      .update({ is_archived: nextArchived })
+      .eq("id", project.id);
+
+    if (error) {
+      console.error("Failed to update project archive status:", error);
+      alert("Failed to update project archive status");
+    } else {
+      await recordActivity({
+        projectId: project.id,
+        action: nextArchived ? "project_archived" : "project_unarchived",
+        details: project.title,
+      });
+
+      await onDataChanged();
+    }
+  }
+
+  function getSelectableProjectTasks() {
+    return projects.flatMap((project) =>
+      getProjectTasks(project).filter((task) => !task.parent_task_id)
+    );
+  }
+
+  function getSelectedTasks() {
+    const selectedSet = new Set(selectedTaskIds);
+    return getSelectableProjectTasks().filter((task) => selectedSet.has(task.id));
+  }
+
+  function toggleTaskSelected(taskId) {
+    setSelectedTaskIds((current) =>
+      current.includes(taskId)
+        ? current.filter((id) => id !== taskId)
+        : [...current, taskId]
+    );
+  }
+
+  async function bulkCompleteSelected() {
+    const selectedTasks = getSelectedTasks();
+    if (selectedTasks.length === 0) return;
+
+    const { error } = await supabase
+      .from("tasks")
+      .update({ is_complete: true })
+      .in("id", selectedTasks.map((task) => task.id));
+
+    if (error) {
+      console.error("Failed to complete selected tasks:", error);
+      alert("Failed to complete selected tasks");
+      return;
+    }
+
+    await Promise.all(
+      selectedTasks.map((task) =>
+        recordActivity({
+          projectId: task.project_id,
+          taskId: task.id,
+          action: "bulk_task_completed",
+          details: task.label || "Untitled task",
+        })
+      )
+    );
+
+    setSelectedTaskIds([]);
+    await onDataChanged();
+  }
+
+  async function bulkAssignSelected() {
+    const selectedTasks = getSelectedTasks();
+    if (selectedTasks.length === 0) return;
+    if (!bulkAssigneeId) {
+      alert("Choose a person before assigning selected tasks.");
+      return;
+    }
+
+    const assignee = teamMembers.find((member) => member.id === bulkAssigneeId);
+
+    const { error } = await supabase
+      .from("tasks")
+      .update({ assigned_to: bulkAssigneeId })
+      .in("id", selectedTasks.map((task) => task.id));
+
+    if (error) {
+      console.error("Failed to assign selected tasks:", error);
+      alert("Failed to assign selected tasks");
+      return;
+    }
+
+    await Promise.all(
+      selectedTasks.map((task) =>
+        recordActivity({
+          projectId: task.project_id,
+          taskId: task.id,
+          action: "bulk_task_assigned",
+          details: `${task.label || "Untitled task"} assigned to ${assignee?.name || "Unknown"}`,
+        })
+      )
+    );
+
+    setSelectedTaskIds([]);
+    await onDataChanged();
+  }
+
+  async function bulkSetWaitingSelected() {
+    const selectedTasks = getSelectedTasks();
+    if (selectedTasks.length === 0) return;
+
+    const { error } = await supabase
+      .from("tasks")
+      .update({
+        is_waiting: true,
+        waiting_since: new Date().toISOString(),
+      })
+      .in("id", selectedTasks.map((task) => task.id));
+
+    if (error) {
+      console.error("Failed to set selected tasks waiting:", error);
+      alert("Failed to set selected tasks waiting");
+      return;
+    }
+
+    await Promise.all(
+      selectedTasks.map((task) =>
+        recordActivity({
+          projectId: task.project_id,
+          taskId: task.id,
+          action: "bulk_waiting_started",
+          details: task.label || "Untitled task",
+        })
+      )
+    );
+
+    setSelectedTaskIds([]);
+    await onDataChanged();
+  }
+
+  async function bulkClearWaitingSelected() {
+    const selectedTasks = getSelectedTasks();
+    if (selectedTasks.length === 0) return;
+
+    const { error } = await supabase
+      .from("tasks")
+      .update({
+        is_waiting: false,
+        waiting_since: null,
+      })
+      .in("id", selectedTasks.map((task) => task.id));
+
+    if (error) {
+      console.error("Failed to clear waiting from selected tasks:", error);
+      alert("Failed to clear waiting from selected tasks");
+      return;
+    }
+
+    await Promise.all(
+      selectedTasks.map((task) =>
+        recordActivity({
+          projectId: task.project_id,
+          taskId: task.id,
+          action: "bulk_waiting_cleared",
+          details: task.label || "Untitled task",
+        })
+      )
+    );
+
+    setSelectedTaskIds([]);
+    await onDataChanged();
   }
 
   const visibleProjects = projects.filter((project) => {
@@ -1271,7 +1830,29 @@ function Projects({ projects, teamMembers = [], onDataChanged }) {
       }
     }
 
+    if (!showArchivedProjects && project.is_archived) {
+      return false;
+    }
+
     if (hideCompletedProjects && project.status === "Complete") {
+      return false;
+    }
+
+    const projectTasks = getProjectTasks(project).filter((task) => !task.parent_task_id);
+
+    if (smartView === "overdue" && summary.overdue === 0) {
+      return false;
+    }
+
+    if (smartView === "waiting" && !projectTasks.some((task) => !task.is_complete && task.is_waiting)) {
+      return false;
+    }
+
+    if (smartView === "waitingTooLong" && !projectTasks.some((task) => !task.is_complete && isTaskWaitingTooLong(task))) {
+      return false;
+    }
+
+    if (smartView === "unassigned" && !projectTasks.some((task) => !task.is_complete && !task.assigned_to)) {
       return false;
     }
 
@@ -1280,13 +1861,11 @@ function Projects({ projects, teamMembers = [], onDataChanged }) {
     }
 
     if (assigneeFilter !== "all") {
-      const tasks = getProjectTasks(project).filter((task) => !task.parent_task_id);
-
       if (assigneeFilter === "unassigned") {
-        return tasks.some((task) => !task.is_complete && !task.assigned_to);
+        return projectTasks.some((task) => !task.is_complete && !task.assigned_to);
       }
 
-      return tasks.some(
+      return projectTasks.some(
         (task) => !task.is_complete && task.assigned_to === assigneeFilter
       );
     }
@@ -1306,16 +1885,6 @@ function Projects({ projects, teamMembers = [], onDataChanged }) {
         </button>
       </div>
 
-      <div className="task-filter-bar">
-        <label>
-          <input
-            type="checkbox"
-            checked={showCompletedTasks}
-            onChange={(event) => setShowCompletedTasks(event.target.checked)}
-          />
-          Show completed tasks
-        </label>
-      </div>
 
       {showProjectForm && (
         <div className="project-create-form">
@@ -1385,7 +1954,7 @@ function Projects({ projects, teamMembers = [], onDataChanged }) {
         </div>
       )}
 
-      <div className="project-filter-bar">
+      <div className="project-top-controls">
         <label className="project-search-label">
           Search
           <input
@@ -1395,63 +1964,155 @@ function Projects({ projects, teamMembers = [], onDataChanged }) {
           />
         </label>
 
-        <div className="project-filter-buttons">
-          <button type="button" onClick={expandAllProjects}>
-            Expand all
+        <details className="compact-menu project-tools-menu">
+          <summary>Project tools</summary>
+          <div className="compact-menu-panel project-filter-bar">
+            <div className="project-filter-buttons">
+              <button type="button" onClick={expandAllProjects}>Expand all</button>
+              <button type="button" onClick={collapseAllProjects}>Collapse all</button>
+            </div>
+
+            <div className="project-tools-section">
+              <span className="project-tools-section-title">Display</span>
+
+              <label className="project-tool-row project-tool-checkbox-row">
+                <span>Show completed tasks</span>
+                <input
+                  type="checkbox"
+                  checked={showCompletedTasks}
+                  onChange={(event) => setShowCompletedTasks(event.target.checked)}
+                />
+              </label>
+
+              <label className="project-tool-row project-tool-checkbox-row">
+                <span>Hide completed projects</span>
+                <input
+                  type="checkbox"
+                  checked={hideCompletedProjects}
+                  onChange={(event) => setHideCompletedProjects(event.target.checked)}
+                />
+              </label>
+
+              <label className="project-tool-row project-tool-checkbox-row">
+                <span>Show archived projects</span>
+                <input
+                  type="checkbox"
+                  checked={showArchivedProjects}
+                  onChange={(event) => setShowArchivedProjects(event.target.checked)}
+                />
+              </label>
+            </div>
+
+            <div className="project-tools-section">
+              <span className="project-tools-section-title">Filters</span>
+
+              <label className="project-tool-row project-tool-select-row">
+                <span>Smart view</span>
+                <select value={smartView} onChange={(event) => setSmartView(event.target.value)}>
+                  <option value="all">All active projects</option>
+                  <option value="overdue">Projects with overdue tasks</option>
+                  <option value="waiting">Projects with waiting tasks</option>
+                  <option value="waitingTooLong">Waiting too long</option>
+                  <option value="unassigned">Projects with unassigned tasks</option>
+                </select>
+              </label>
+
+              <label className="project-tool-row project-tool-checkbox-row">
+                <span>Only projects with overdue tasks</span>
+                <input
+                  type="checkbox"
+                  checked={showOnlyOverdueProjects}
+                  onChange={(event) => setShowOnlyOverdueProjects(event.target.checked)}
+                />
+              </label>
+
+              <label className="project-tool-row project-tool-select-row">
+                <span>Assigned to</span>
+                <select value={assigneeFilter} onChange={(event) => setAssigneeFilter(event.target.value)}>
+                  <option value="all">Anyone</option>
+                  <option value="unassigned">Unassigned</option>
+                  {teamMembers.map((member) => (
+                    <option value={member.id} key={member.id}>{member.name}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </div>
+        </details>
+
+        <details className="compact-menu team-menu">
+          <summary><Users size={15} /> Team</summary>
+          <div className="compact-menu-panel team-manager-panel">
+            <div className="team-member-add-row">
+              <input value={newTeamMemberName} onChange={(event) => setNewTeamMemberName(event.target.value)} placeholder="Add team member" />
+              <button type="button" onClick={addTeamMember}>Add</button>
+            </div>
+
+            <div className="team-member-list">
+              {teamMembers.length === 0 && <p className="muted-text">No team members yet.</p>}
+              {teamMembers.map((member) => (
+                <div className="team-member-row" key={member.id}>
+                  {editingTeamMemberId === member.id ? (
+                    <>
+                      <input
+                        value={editingTeamMemberName}
+                        onChange={(event) => setEditingTeamMemberName(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") saveTeamMemberName(member);
+                          if (event.key === "Escape") cancelEditTeamMember();
+                        }}
+                        autoFocus
+                      />
+                      <button type="button" onClick={() => saveTeamMemberName(member)}>Save</button>
+                      <button type="button" onClick={cancelEditTeamMember}>Cancel</button>
+                    </>
+                  ) : (
+                    <>
+                      <strong>{member.name}</strong>
+                      <button type="button" onClick={() => startEditTeamMember(member)}>Edit</button>
+                      <button type="button" className="danger-button" onClick={() => deleteTeamMember(member)}>Delete</button>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </details>
+
+        <span className="project-count-label">{visibleProjects.length} project{visibleProjects.length === 1 ? "" : "s"} shown</span>
+      </div>
+
+      {selectedTaskIds.length > 0 && (
+        <div className="bulk-action-bar">
+          <strong>{selectedTaskIds.length} selected</strong>
+          <button type="button" onClick={bulkCompleteSelected}>
+            Complete
           </button>
-          <button type="button" onClick={collapseAllProjects}>
-            Collapse all
-          </button>
-        </div>
-
-        <label>
-          <input
-            type="checkbox"
-            checked={hideCompletedProjects}
-            onChange={(event) => setHideCompletedProjects(event.target.checked)}
-          />
-          Hide completed projects
-        </label>
-
-        <label>
-          <input
-            type="checkbox"
-            checked={showOnlyOverdueProjects}
-            onChange={(event) => setShowOnlyOverdueProjects(event.target.checked)}
-          />
-          Show only projects with overdue tasks
-        </label>
-
-        <label>
-          Assigned to
           <select
-            value={assigneeFilter}
-            onChange={(event) => setAssigneeFilter(event.target.value)}
+            value={bulkAssigneeId}
+            onChange={(event) => setBulkAssigneeId(event.target.value)}
           >
-            <option value="all">Anyone</option>
-            <option value="unassigned">Unassigned</option>
+            <option value="">Assign to...</option>
             {teamMembers.map((member) => (
               <option value={member.id} key={member.id}>
                 {member.name}
               </option>
             ))}
           </select>
-        </label>
-
-        <span>{visibleProjects.length} project{visibleProjects.length === 1 ? "" : "s"} shown</span>
-      </div>
-
-      <div className="team-member-bar">
-        <Users size={16} />
-        <input
-          value={newTeamMemberName}
-          onChange={(event) => setNewTeamMemberName(event.target.value)}
-          placeholder="Add team member"
-        />
-        <button type="button" onClick={addTeamMember}>
-          Add Person
-        </button>
-      </div>
+          <button type="button" onClick={bulkAssignSelected}>
+            Assign
+          </button>
+          <button type="button" onClick={bulkSetWaitingSelected}>
+            Set Waiting
+          </button>
+          <button type="button" onClick={bulkClearWaitingSelected}>
+            Clear Waiting
+          </button>
+          <button type="button" onClick={() => setSelectedTaskIds([])}>
+            Clear Selection
+          </button>
+        </div>
+      )}
 
       <div className="project-list">
         {visibleProjects.length === 0 && (
@@ -1464,13 +2125,14 @@ function Projects({ projects, teamMembers = [], onDataChanged }) {
           const buildings = project.buildings || [];
           const milestones = project.milestones || [];
           const isCollapsed = collapsedProjectIds.includes(project.id);
+          const isMilestonesCollapsed = collapsedMilestoneProjectIds.includes(project.id);
           const taskSummary = getProjectTaskSummary(project);
 
           return (
             <article
               className={`project-card project-card-stacked ${
                 isCollapsed ? "project-collapsed" : ""
-              } ${draggedProjectId === project.id ? "project-dragging" : ""}`}
+              } ${project.is_archived ? "project-archived" : ""} ${draggedProjectId === project.id ? "project-dragging" : ""}`}
               id={`project-${project.id}`}
               key={project.id}
               draggable
@@ -1480,68 +2142,205 @@ function Projects({ projects, teamMembers = [], onDataChanged }) {
               onDragEnd={() => setDraggedProjectId(null)}
             >
               <div className="project-card-top">
-                <div>
-                  <h3 className={getProjectTitleClass(project.status)}>{project.title}</h3>
-                  <p>
-                    {project.project_number} · {project.client}
-                  </p>
-                  <p>{project.architect}</p>
-                  <div className="project-summary-badges">
-                    <span>{taskSummary.incomplete} open task{taskSummary.incomplete === 1 ? "" : "s"}</span>
-                    {taskSummary.overdue > 0 && (
-                      <span className="summary-overdue">
-                        {taskSummary.overdue} overdue
-                      </span>
-                    )}
+                <div className="project-title-block">
+                  <button
+                    type="button"
+                    className="disclosure-button project-disclosure-button"
+                    onClick={() => toggleProjectCollapsed(project.id)}
+                    aria-label={isCollapsed ? "Expand project" : "Collapse project"}
+                    title={isCollapsed ? "Expand project" : "Collapse project"}
+                  >
+                    {isCollapsed ? "▶" : "▼"}
+                  </button>
+
+                  <div>
+                    <h3 className={getProjectTitleClass(project.status)}>{project.title}</h3>
+                    {project.is_archived && <span className="archived-badge">Archived</span>}
+                    <p className="project-number-line">[{project.project_number || "TBD"}]</p>
+                    <p>{project.architect}</p>
+                    <p>{project.client}</p>
+                    <div className="project-summary-badges">
+                      <span>{taskSummary.incomplete} open task{taskSummary.incomplete === 1 ? "" : "s"}</span>
+                      {taskSummary.overdue > 0 && (
+                        <span className="summary-overdue">
+                          {taskSummary.overdue} overdue
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
-                <div className="project-actions">
-                  <span className="drag-handle" title="Drag to reorder">↕</span>
+                <div className="project-actions project-actions-compact">
+                  <details className="compact-menu project-card-menu">
+                    <summary aria-label="Project actions" title="Project actions">⋯</summary>
+                    <div className="compact-menu-panel project-card-menu-panel">
+                      <button type="button" onClick={() => addBuilding(project.id)}>
+                        <Building2 size={13} /> Building
+                      </button>
 
-                  <button
-                    type="button"
-                    className="collapse-button"
-                    onClick={() => toggleProjectCollapsed(project.id)}
+                      <button type="button" onClick={() => openMilestoneForm(project.id)}>
+                        + Milestone
+                      </button>
+
+                      <button
+                        type="button"
+                        className={project.is_archived ? "primary-button" : ""}
+                        onClick={() => toggleArchiveProject(project)}
+                      >
+                        {project.is_archived ? "Unarchive" : "Archive"}
+                      </button>
+                    </div>
+                  </details>
+
+                  <select
+                    className={`status-select ${
+                      project.status === "CA"
+                        ? "status-ca"
+                        : project.status === "Complete"
+                          ? "status-complete"
+                          : project.status === "On Hold"
+                            ? "status-hold"
+                            : "status-design"
+                    }`}
+                    value={project.status || "Design"}
+                    onChange={(event) => updateProjectStatus(project.id, event.target.value)}
                   >
-                    {isCollapsed ? "Expand" : "Collapse"}
-                  </button>
-
-                  <button type="button" onClick={() => addBuilding(project.id)}>
-                    <Building2 size={15} /> Building
-                  </button>
-
-                  <button type="button" onClick={() => openMilestoneForm(project.id)}>
-                    + Milestone
-                  </button>
-
-                  <label className="status-select-wrap">
-                    Status
-                    <select
-                      className={`status-select ${
-                        project.status === "CA"
-                          ? "status-ca"
-                          : project.status === "Complete"
-                            ? "status-complete"
-                            : project.status === "On Hold"
-                              ? "status-hold"
-                              : "status-design"
-                      }`}
-                      value={project.status || "Design"}
-                      onChange={(event) =>
-                        updateProjectStatus(project.id, event.target.value)
-                      }
-                    >
-                      <option value="Design">Design</option>
-                      <option value="CA">CA</option>
-                      <option value="Complete">Complete</option>
-                      <option value="On Hold">On Hold</option>
-                    </select>
-                  </label>
+                    <option value="Design">Design</option>
+                    <option value="CA">CA</option>
+                    <option value="Complete">Complete</option>
+                    <option value="On Hold">On Hold</option>
+                  </select>
                 </div>
               </div>
 
               <div className={`project-detail-panel ${isCollapsed ? "collapsed" : ""}`}>
+              {milestoneProjectId === project.id && (
+                <div className="inline-form">
+                  <label>
+                    Milestone
+                    <input
+                      value={milestoneLabel}
+                      onChange={(e) => setMilestoneLabel(e.target.value)}
+                      placeholder="50% CDs"
+                    />
+                  </label>
+
+                  <label>
+                    Due date
+                    <input
+                      value={milestoneDate}
+                      onChange={(e) => setMilestoneDate(e.target.value)}
+                      placeholder="05/15/2026"
+                    />
+                  </label>
+
+                  <div className="building-picker">
+                    <strong>Applies to</strong>
+                    {buildings.length === 0 && (
+                      <p className="muted-text">General project milestone. No buildings yet.</p>
+                    )}
+
+                    {buildings.map((building) => (
+                      <label className="checkbox-row" key={building.id}>
+                        <input
+                          type="checkbox"
+                          checked={selectedBuildingIds.includes(building.id)}
+                          onChange={() => toggleBuilding(building.id)}
+                        />
+                        {building.name}
+                      </label>
+                    ))}
+                  </div>
+
+                  <div className="form-actions">
+                    <button
+                      type="button"
+                      className="primary-button"
+                      onClick={() => saveMilestone(project.id)}
+                      disabled={savingMilestone}
+                    >
+                      {savingMilestone
+                        ? "Saving..."
+                        : editingMilestoneId
+                          ? "Update Milestone"
+                          : "Save Milestone"}
+                    </button>
+
+                    <button type="button" onClick={closeMilestoneForm}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className={`milestone-manager ${isMilestonesCollapsed ? "section-collapsed" : ""}`}>
+                <button
+                  type="button"
+                  className="section-collapse-header"
+                  onClick={() => toggleMilestonesCollapsed(project.id)}
+                  aria-expanded={!isMilestonesCollapsed}
+                >
+                  <span className="section-title-wrap">
+                    <span className="attention-disclosure-arrow">
+                      {isMilestonesCollapsed ? "▶" : "▼"}
+                    </span>
+                    <h4>Milestones</h4>
+                  </span>
+                  <span className="section-count-pill">{milestones.length}</span>
+                </button>
+
+                {!isMilestonesCollapsed && milestones.length === 0 && (
+                  <p className="muted-text">No milestones yet.</p>
+                )}
+
+                {!isMilestonesCollapsed && milestones.map((milestone) => {
+                  const linkedBuildings =
+                    milestone.milestone_buildings
+                      ?.map((link) => link.buildings?.name)
+                      .filter(Boolean) || [];
+
+                  return (
+                    <div className="milestone-row" key={milestone.id}>
+                      <div>
+                        <strong>{milestone.label}</strong>
+                        <span>
+                          {milestone.due_date
+                            ? format(
+                                new Date(`${milestone.due_date}T00:00:00`),
+                                "EEE, MMM d, yyyy"
+                              )
+                            : "No date"}
+                          {" · "}
+                          {linkedBuildings.length > 0
+                            ? linkedBuildings.join(", ")
+                            : "General"}
+                        </span>
+                      </div>
+
+                      <div className="row-actions milestone-row-actions">
+                        <details className="compact-menu milestone-actions-menu">
+                          <summary aria-label="Milestone actions" title="Milestone actions">⋯</summary>
+                          <div className="compact-menu-panel small-actions-menu-panel">
+                            <button
+                              type="button"
+                              onClick={() => openEditMilestoneForm(project.id, milestone)}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="danger-button"
+                              onClick={() => deleteMilestone(milestone)}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </details>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
                 <div className="building-manager">
                 <h4>Buildings</h4>
 
@@ -1659,6 +2458,28 @@ function Projects({ projects, teamMembers = [], onDataChanged }) {
                                     task.is_complete ? "task-complete" : ""
                                   } ${!task.is_complete && daysFromToday(task.due_date) < 0 ? "task-overdue" : ""}`}
                                 >
+                                {(getSortedSubtasks(generalTasks, task.id).length > 0 || subtaskParentId === task.id) ? (
+                                  <button
+                                    type="button"
+                                    className="disclosure-button task-disclosure-button"
+                                    onClick={() => toggleSubtasks(task.id)}
+                                    aria-label={collapsedSubtaskParentIds.includes(task.id) ? "Show subtasks" : "Hide subtasks"}
+                                    title={collapsedSubtaskParentIds.includes(task.id) ? "Show subtasks" : "Hide subtasks"}
+                                  >
+                                    {collapsedSubtaskParentIds.includes(task.id) ? "▶" : "▼"}
+                                  </button>
+                                ) : (
+                                  <span className="disclosure-spacer" />
+                                )}
+
+                                <input
+                                  type="checkbox"
+                                  className="task-select-checkbox"
+                                  checked={selectedTaskIds.includes(task.id)}
+                                  onChange={() => toggleTaskSelected(task.id)}
+                                  title="Select for bulk actions"
+                                />
+
                                 <label>
                                   <input
                                     type="checkbox"
@@ -1671,6 +2492,23 @@ function Projects({ projects, teamMembers = [], onDataChanged }) {
                                 {task.is_waiting && (
                                   <span className="waiting-badge">Waiting</span>
                                 )}
+
+                                {isTaskWaitingTooLong(task) && (
+                                  <span className="waiting-stale-badge">
+                                    ⚠ Waiting {daysWaiting(task)} days
+                                  </span>
+                                )}
+
+                                {(() => {
+                                  const subtasks = getSortedSubtasks(generalTasks, task.id);
+                                  const completed = countCompletedSubtasks(subtasks);
+
+                                  return subtasks.length > 0 ? (
+                                    <span className="subtask-progress">
+                                      {completed}/{subtasks.length} subtasks
+                                    </span>
+                                  ) : null;
+                                })()}
 
                                 {task.notes && (
                                   <p className="task-notes">{task.notes}</p>
@@ -1704,51 +2542,21 @@ function Projects({ projects, teamMembers = [], onDataChanged }) {
                                     </span>
                                   )}
 
-                                  <button
-                                    type="button"
-                                    onClick={() => toggleTaskWaiting(task)}
-                                  >
-                                    {task.is_waiting ? "Clear Waiting" : "Waiting"}
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => openSubtaskForm(task.id)}
-                                  >
-                                    + Subtask
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => toggleSubtasks(task.id)}
-                                  >
-                                    {collapsedSubtaskParentIds.includes(task.id)
-                                      ? "Show Subtasks"
-                                      : "Hide Subtasks"}
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => openEditTaskForm(generalScopeId, task)}
-                                  >
-                                    Edit
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    className="danger-button"
-                                    onClick={() => deleteTask(task)}
-                                  >
-                                    Delete
-                                  </button>
+                                  <details className="task-actions-menu">
+                                    <summary aria-label="Task actions">⋯</summary>
+                                    <div className="task-actions-menu-panel">
+                                      <button type="button" onClick={() => toggleTaskWaiting(task)}>{task.is_waiting ? "Clear Waiting" : "Waiting"}</button>
+                                      <button type="button" onClick={() => openSubtaskForm(task.id)}>+ Subtask</button>
+                                      <button type="button" onClick={() => openEditTaskForm(generalScopeId, task)}>Edit</button>
+                                      <button type="button" className="danger-button" onClick={() => deleteTask(task)}>Delete</button>
+                                    </div>
+                                  </details>
                                 </div>
                               </div>
 
                               {!collapsedSubtaskParentIds.includes(task.id) && (
                                 <div className="subtask-list">
-                                  {(generalTasks || [])
-                                    .filter((subtask) => subtask.parent_task_id === task.id)
-                                    .map((subtask) => (
+                                  {getSortedSubtasks(generalTasks, task.id).map((subtask) => (
                                       <div
                                         className={`subtask-row ${
                                           subtask.is_complete ? "task-complete" : ""
@@ -1762,6 +2570,15 @@ function Projects({ projects, teamMembers = [], onDataChanged }) {
                                               onChange={(event) =>
                                                 setEditingSubtaskLabel(event.target.value)
                                               }
+                                              onKeyDown={(event) => {
+                                                if (event.key === "Enter") {
+                                                  saveEditedSubtask(subtask);
+                                                }
+
+                                                if (event.key === "Escape") {
+                                                  closeEditSubtaskForm();
+                                                }
+                                              }}
                                               autoFocus
                                             />
                                             <button
@@ -1847,44 +2664,85 @@ function Projects({ projects, teamMembers = [], onDataChanged }) {
                       const completedTaskCount = buildingTasks.filter(
                         (task) => task.is_complete
                       ).length;
+                      const isBuildingCollapsed = collapsedBuildingIds.includes(building.id);
 
                       return (
-                        <div className="building-task-card" key={building.id}>
+                        <div className={`building-task-card ${isBuildingCollapsed ? "section-collapsed" : ""}`} key={building.id}>
                           <div className="building-task-header">
-                            <div>
-                              <strong>{building.name}</strong>
-                              <span>
-                                {buildingTasks.length} task
-                                {buildingTasks.length === 1 ? "" : "s"}
-                                {buildingTasks.length > 0 &&
-                                  ` (${completedTaskCount} done)`}
+                            <button
+                              type="button"
+                              className="building-collapse-header building-collapse-grid"
+                              onClick={() => toggleBuildingCollapsed(building.id)}
+                              aria-expanded={!isBuildingCollapsed}
+                            >
+                              <span className="building-disclosure-cell" aria-hidden="true">
+                                {isBuildingCollapsed ? "▶" : "▼"}
                               </span>
-                            </div>
+                              <span className="building-title-stack">
+                                <strong className="building-section-title">{building.name}</strong>
+                                <span className="building-task-count">
+                                  {buildingTasks.length} task
+                                  {buildingTasks.length === 1 ? "" : "s"}
+                                  {buildingTasks.length > 0 &&
+                                    ` (${completedTaskCount} done)`}
+                                </span>
+                              </span>
+                            </button>
 
-                            <div className="row-actions">
+                            <div className="row-actions building-header-actions">
                               <button
                                 type="button"
                                 onClick={() => openTaskForm(building.id)}
                               >
                                 + Task
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => editBuilding(building)}
-                              >
-                                Edit
-                              </button>
-                              <button
-                                type="button"
-                                className="danger-button"
-                                onClick={() => deleteBuilding(building)}
-                              >
-                                Delete
-                              </button>
+
+                              <details className="compact-menu building-actions-menu">
+                                <summary aria-label="Building actions" title="Building actions">⋯</summary>
+                                <div className="compact-menu-panel small-actions-menu-panel">
+                                  <button
+                                    type="button"
+                                    onClick={() => editBuilding(building)}
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="danger-button"
+                                    onClick={() => deleteBuilding(building)}
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
+                              </details>
                             </div>
                           </div>
 
-                          {taskBuildingId === building.id && (
+                          {!isBuildingCollapsed && editingBuildingId === building.id && (
+                            <div className="building-edit-form">
+                              <input
+                                value={editingBuildingName}
+                                onChange={(event) => setEditingBuildingName(event.target.value)}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter") saveEditedBuilding(building);
+                                  if (event.key === "Escape") cancelEditBuilding();
+                                }}
+                                autoFocus
+                              />
+                              <button
+                                type="button"
+                                className="primary-button"
+                                onClick={() => saveEditedBuilding(building)}
+                              >
+                                Save
+                              </button>
+                              <button type="button" onClick={cancelEditBuilding}>
+                                Cancel
+                              </button>
+                            </div>
+                          )}
+
+                          {!isBuildingCollapsed && taskBuildingId === building.id && (
                             <div className="task-form">
                               <input
                                 value={taskLabel}
@@ -1950,7 +2808,7 @@ function Projects({ projects, teamMembers = [], onDataChanged }) {
                             </div>
                           )}
 
-                          {buildingTasks.length > 0 && (
+                          {!isBuildingCollapsed && buildingTasks.length > 0 && (
                             <div className="task-list">
                               {buildingTasks.filter((task) => !task.parent_task_id).map((task) => (
                                 <React.Fragment key={task.id}>
@@ -1959,6 +2817,28 @@ function Projects({ projects, teamMembers = [], onDataChanged }) {
                                       task.is_complete ? "task-complete" : ""
                                     } ${!task.is_complete && daysFromToday(task.due_date) < 0 ? "task-overdue" : ""}`}
                                   >
+                                  {(getSortedSubtasks(buildingTasks, task.id).length > 0 || subtaskParentId === task.id) ? (
+                                    <button
+                                      type="button"
+                                      className="disclosure-button task-disclosure-button"
+                                      onClick={() => toggleSubtasks(task.id)}
+                                      aria-label={collapsedSubtaskParentIds.includes(task.id) ? "Show subtasks" : "Hide subtasks"}
+                                      title={collapsedSubtaskParentIds.includes(task.id) ? "Show subtasks" : "Hide subtasks"}
+                                    >
+                                      {collapsedSubtaskParentIds.includes(task.id) ? "▶" : "▼"}
+                                    </button>
+                                  ) : (
+                                    <span className="disclosure-spacer" />
+                                  )}
+
+                                  <input
+                                    type="checkbox"
+                                    className="task-select-checkbox"
+                                    checked={selectedTaskIds.includes(task.id)}
+                                    onChange={() => toggleTaskSelected(task.id)}
+                                    title="Select for bulk actions"
+                                  />
+
                                   <label>
                                     <input
                                       type="checkbox"
@@ -1971,6 +2851,23 @@ function Projects({ projects, teamMembers = [], onDataChanged }) {
                                   {task.is_waiting && (
                                     <span className="waiting-badge">Waiting</span>
                                   )}
+
+                                  {isTaskWaitingTooLong(task) && (
+                                    <span className="waiting-stale-badge">
+                                      ⚠ Waiting {daysWaiting(task)} days
+                                    </span>
+                                  )}
+
+                                  {(() => {
+                                    const subtasks = getSortedSubtasks(buildingTasks, task.id);
+                                    const completed = countCompletedSubtasks(subtasks);
+
+                                    return subtasks.length > 0 ? (
+                                      <span className="subtask-progress">
+                                        {completed}/{subtasks.length} subtasks
+                                      </span>
+                                    ) : null;
+                                  })()}
 
                                   {task.notes && (
                                     <p className="task-notes">{task.notes}</p>
@@ -2004,51 +2901,21 @@ function Projects({ projects, teamMembers = [], onDataChanged }) {
                                       </span>
                                     )}
 
-                                    <button
-                                      type="button"
-                                      onClick={() => toggleTaskWaiting(task)}
-                                    >
-                                      {task.is_waiting ? "Clear Waiting" : "Waiting"}
-                                    </button>
-
-                                    <button
-                                      type="button"
-                                      onClick={() => openSubtaskForm(task.id)}
-                                    >
-                                      + Subtask
-                                    </button>
-
-                                    <button
-                                      type="button"
-                                      onClick={() => toggleSubtasks(task.id)}
-                                    >
-                                      {collapsedSubtaskParentIds.includes(task.id)
-                                        ? "Show Subtasks"
-                                        : "Hide Subtasks"}
-                                    </button>
-
-                                    <button
-                                      type="button"
-                                      onClick={() => openEditTaskForm(building.id, task)}
-                                    >
-                                      Edit
-                                    </button>
-
-                                    <button
-                                      type="button"
-                                      className="danger-button"
-                                      onClick={() => deleteTask(task)}
-                                    >
-                                      Delete
-                                    </button>
+                                    <details className="task-actions-menu">
+                                      <summary aria-label="Task actions">⋯</summary>
+                                      <div className="task-actions-menu-panel">
+                                        <button type="button" onClick={() => toggleTaskWaiting(task)}>{task.is_waiting ? "Clear Waiting" : "Waiting"}</button>
+                                        <button type="button" onClick={() => openSubtaskForm(task.id)}>+ Subtask</button>
+                                        <button type="button" onClick={() => openEditTaskForm(building.id, task)}>Edit</button>
+                                        <button type="button" className="danger-button" onClick={() => deleteTask(task)}>Delete</button>
+                                      </div>
+                                    </details>
                                   </div>
                                 </div>
 
                                 {!collapsedSubtaskParentIds.includes(task.id) && (
                                   <div className="subtask-list">
-                                    {(buildingTasks || [])
-                                      .filter((subtask) => subtask.parent_task_id === task.id)
-                                      .map((subtask) => (
+                                    {getSortedSubtasks(buildingTasks, task.id).map((subtask) => (
                                         <div
                                           className={`subtask-row ${
                                             subtask.is_complete ? "task-complete" : ""
@@ -2062,6 +2929,15 @@ function Projects({ projects, teamMembers = [], onDataChanged }) {
                                                 onChange={(event) =>
                                                   setEditingSubtaskLabel(event.target.value)
                                                 }
+                                                onKeyDown={(event) => {
+                                                  if (event.key === "Enter") {
+                                                    saveEditedSubtask(subtask);
+                                                  }
+
+                                                  if (event.key === "Escape") {
+                                                    closeEditSubtaskForm();
+                                                  }
+                                                }}
                                                 autoFocus
                                               />
                                               <button
@@ -2142,115 +3018,10 @@ function Projects({ projects, teamMembers = [], onDataChanged }) {
                   </div>
               </div>
 
-              {milestoneProjectId === project.id && (
-                <div className="inline-form">
-                  <label>
-                    Milestone
-                    <input
-                      value={milestoneLabel}
-                      onChange={(e) => setMilestoneLabel(e.target.value)}
-                      placeholder="50% CDs"
-                    />
-                  </label>
 
-                  <label>
-                    Due date
-                    <input
-                      value={milestoneDate}
-                      onChange={(e) => setMilestoneDate(e.target.value)}
-                      placeholder="05/15/2026"
-                    />
-                  </label>
-
-                  <div className="building-picker">
-                    <strong>Applies to</strong>
-                    {buildings.length === 0 && (
-                      <p className="muted-text">General project milestone. No buildings yet.</p>
-                    )}
-
-                    {buildings.map((building) => (
-                      <label className="checkbox-row" key={building.id}>
-                        <input
-                          type="checkbox"
-                          checked={selectedBuildingIds.includes(building.id)}
-                          onChange={() => toggleBuilding(building.id)}
-                        />
-                        {building.name}
-                      </label>
-                    ))}
-                  </div>
-
-                  <div className="form-actions">
-                    <button
-                      type="button"
-                      className="primary-button"
-                      onClick={() => saveMilestone(project.id)}
-                      disabled={savingMilestone}
-                    >
-                      {savingMilestone
-                        ? "Saving..."
-                        : editingMilestoneId
-                          ? "Update Milestone"
-                          : "Save Milestone"}
-                    </button>
-
-                    <button type="button" onClick={closeMilestoneForm}>
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              <div className="milestone-manager">
-                <h4>Milestones</h4>
-
-                {milestones.length === 0 && (
-                  <p className="muted-text">No milestones yet.</p>
-                )}
-
-                {milestones.map((milestone) => {
-                  const linkedBuildings =
-                    milestone.milestone_buildings
-                      ?.map((link) => link.buildings?.name)
-                      .filter(Boolean) || [];
-
-                  return (
-                    <div className="milestone-row" key={milestone.id}>
-                      <div>
-                        <strong>{milestone.label}</strong>
-                        <span>
-                          {milestone.due_date
-                            ? format(
-                                new Date(`${milestone.due_date}T00:00:00`),
-                                "EEE, MMM d, yyyy"
-                              )
-                            : "No date"}
-                          {" · "}
-                          {linkedBuildings.length > 0
-                            ? linkedBuildings.join(", ")
-                            : "General"}
-                        </span>
-                      </div>
-
-                      <div className="row-actions">
-                        <button
-                          type="button"
-                          onClick={() => openEditMilestoneForm(project.id, milestone)}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          className="danger-button"
-                          onClick={() => deleteMilestone(milestone)}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              <ActivityPanel
+                logs={activityLogs.filter((item) => item.project_id === project.id)}
+              />
               </div>
             </article>
           );
@@ -2329,6 +3100,7 @@ function App() {
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [events, setEvents] = useState([]);
   const [teamMembers, setTeamMembers] = useState([]);
+  const [activityLogs, setActivityLogs] = useState([]);
 
   async function loadProjects() {
     setLoadingProjects(true);
@@ -2414,8 +3186,23 @@ function App() {
     }
   }
 
+  async function loadActivityLogs() {
+    const { data, error } = await supabase
+      .from("activity_log")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(300);
+
+    if (error) {
+      console.error("Error loading activity log:", error);
+      setActivityLogs([]);
+    } else {
+      setActivityLogs(data || []);
+    }
+  }
+
   async function refreshData() {
-    await Promise.all([loadProjects(), loadEvents(), loadTeamMembers()]);
+    await Promise.all([loadProjects(), loadEvents(), loadTeamMembers(), loadActivityLogs()]);
   }
 
   useEffect(() => {
@@ -2475,6 +3262,7 @@ function App() {
         <Projects
           projects={projects}
           teamMembers={teamMembers}
+          activityLogs={activityLogs}
           highlightedTaskId={highlightedTaskId}
           onDataChanged={refreshData}
         />
@@ -2499,7 +3287,7 @@ function App() {
         onDataChanged={refreshData}
       />
     );
-  }, [activeTab, toggles, events, projects, teamMembers, loadingProjects]);
+  }, [activeTab, toggles, events, projects, teamMembers, activityLogs, loadingProjects]);
 
   return (
     <main className="app-shell">
@@ -2591,4 +3379,4 @@ function App() {
   );
 }
 
-createRoot(document.getElementById("root")).render(<App />);
+export default App;
