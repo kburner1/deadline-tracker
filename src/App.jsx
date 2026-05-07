@@ -81,6 +81,56 @@ function formatTaskDueDate(dateValue) {
   return format(new Date(`${dateValue}T00:00:00`), "EEE, MMM d");
 }
 
+function getProjectStatusRank(status) {
+  if (status === "Design") return 1;
+  if (status === "CA") return 2;
+  if (status === "On Hold") return 3;
+  if (status === "Complete") return 4;
+  return 5;
+}
+
+function getProjectNumberSortParts(projectNumber = "") {
+  const value = String(projectNumber || "").trim();
+  const match = value.match(/^(.*?)(\d+)(?!.*\d)(.*)$/);
+
+  if (!match) {
+    return {
+      prefix: value.toLowerCase(),
+      number: Number.POSITIVE_INFINITY,
+      suffix: "",
+      raw: value.toLowerCase(),
+    };
+  }
+
+  return {
+    prefix: match[1].toLowerCase(),
+    number: Number(match[2]),
+    suffix: match[3].toLowerCase(),
+    raw: value.toLowerCase(),
+  };
+}
+
+function compareProjectNumbers(aProject, bProject) {
+  const a = getProjectNumberSortParts(aProject?.project_number);
+  const b = getProjectNumberSortParts(bProject?.project_number);
+
+  return (
+    a.prefix.localeCompare(b.prefix, undefined, { numeric: true, sensitivity: "base" }) ||
+    a.number - b.number ||
+    a.suffix.localeCompare(b.suffix, undefined, { numeric: true, sensitivity: "base" }) ||
+    a.raw.localeCompare(b.raw, undefined, { numeric: true, sensitivity: "base" }) ||
+    (aProject?.title || "").localeCompare(bProject?.title || "")
+  );
+}
+
+function sortProjectsByStatusThenNumber(projectList = []) {
+  return [...projectList].sort(
+    (a, b) =>
+      getProjectStatusRank(a.status) - getProjectStatusRank(b.status) ||
+      compareProjectNumbers(a, b)
+  );
+}
+
 function splitParentAndSubtasks(tasks = []) {
   const parents = [];
   const subtasksByParent = new Map();
@@ -216,6 +266,7 @@ function isTaskWaitingTooLong(task, thresholdDays = 5) {
 
 function collectProjectTasks(projects) {
   return projects
+    .filter((project) => !project.is_archived)
     .flatMap((project) => {
       const generalTasks = (project.tasks || [])
         .filter((task) => !task.building_id && !task.is_archived)
@@ -531,6 +582,71 @@ function CalendarMonth({ events, toggles, onEventClick, onMilestoneDrop }) {
   );
 }
 
+function ProjectStatusSummary({ projects = [], onJumpToProject = () => {} }) {
+  const [isCollapsed, setIsCollapsed] = useState(true);
+  const activeProjects = sortProjectsByStatusThenNumber(
+    projects.filter((project) => !project.is_archived && project.status !== "Complete")
+  );
+
+  const statusColumns = ["Design", "CA", "On Hold"].map((status) => ({
+    status,
+    projects: activeProjects.filter((project) => project.status === status),
+  }));
+
+  const totalCount = activeProjects.length;
+
+  return (
+    <div className={`project-status-summary ${isCollapsed ? "project-status-summary-collapsed" : ""}`}>
+      <button
+        type="button"
+        className="project-status-summary-header"
+        onClick={() => setIsCollapsed((current) => !current)}
+        aria-expanded={!isCollapsed}
+      >
+        <span className="section-title-wrap">
+          <span className="attention-disclosure-arrow">{isCollapsed ? "▶" : "▼"}</span>
+          <span>
+            <strong>Project Summary</strong>
+            <em>Active projects by status</em>
+          </span>
+        </span>
+        <span className="section-count-pill">{totalCount}</span>
+      </button>
+
+      {!isCollapsed && (
+        <div className="project-status-summary-grid">
+          {statusColumns.map((column) => (
+            <div className="project-status-summary-column" key={column.status}>
+              <div className="project-status-summary-column-header">
+                <strong>{column.status}</strong>
+                <span>{column.projects.length}</span>
+              </div>
+
+              {column.projects.length === 0 ? (
+                <p className="muted-text">None</p>
+              ) : (
+                <div className="project-status-summary-list">
+                  {column.projects.map((project) => (
+                    <button
+                      type="button"
+                      className="project-status-summary-row"
+                      key={project.id}
+                      onClick={() => onJumpToProject(project.id)}
+                    >
+                      <span>{project.project_number || "TBD"}</span>
+                      <strong>{project.title}</strong>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Dashboard({
   events,
   projects,
@@ -540,11 +656,15 @@ function Dashboard({
   onSuccess = () => {},
 }) {
   const [selectedDashboardAssigneeId, setSelectedDashboardAssigneeId] = useState("__all__");
-  const sortedEvents = [...events].sort((a, b) =>
-    (a.due_date || "").localeCompare(b.due_date || "")
-  );
+  const activeDashboardProjects = projects.filter((project) => !project.is_archived);
+  const activeDashboardProjectIds = new Set(activeDashboardProjects.map((project) => project.id));
+  const sortedEvents = [...events]
+    .filter((event) => activeDashboardProjectIds.has(event.project_id))
+    .sort((a, b) =>
+      (a.due_date || "").localeCompare(b.due_date || "")
+    );
 
-  const allTasks = collectProjectTasks(projects);
+  const allTasks = collectProjectTasks(activeDashboardProjects);
   const incompleteDatedTasks = allTasks.filter(
     (task) => !task.is_complete && !task.is_waiting && task.due_date
   );
@@ -876,6 +996,11 @@ function Dashboard({
           })}
         </div>
       </div>
+
+      <ProjectStatusSummary
+        projects={activeDashboardProjects}
+        onJumpToProject={onJumpToProject}
+      />
     </section>
   );
 }
@@ -919,6 +1044,13 @@ function Projects({
   const [collapsedSubtaskParentIds, setCollapsedSubtaskParentIds] = useState([]);
   const [collapsedMilestoneProjectIds, setCollapsedMilestoneProjectIds] = useState([]);
   const [collapsedBuildingIds, setCollapsedBuildingIds] = useState([]);
+  const [collapsedBuildingSectionProjectIds, setCollapsedBuildingSectionProjectIds] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("deadlineTrackerCollapsedBuildingSections") || "[]");
+    } catch {
+      return [];
+    }
+  });
   const [collapsedProjectIds, setCollapsedProjectIds] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem("deadlineTrackerCollapsedProjects") || "[]");
@@ -957,6 +1089,13 @@ function Projects({
       JSON.stringify(collapsedProjectIds)
     );
   }, [collapsedProjectIds]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      "deadlineTrackerCollapsedBuildingSections",
+      JSON.stringify(collapsedBuildingSectionProjectIds)
+    );
+  }, [collapsedBuildingSectionProjectIds]);
 
   useEffect(() => {
     setEditingSubtaskId(null);
@@ -1034,6 +1173,9 @@ function Projects({
         current.filter((id) => id !== projectIdToExpand)
       );
       setCollapsedMilestoneProjectIds((current) =>
+        current.filter((id) => id !== projectIdToExpand)
+      );
+      setCollapsedBuildingSectionProjectIds((current) =>
         current.filter((id) => id !== projectIdToExpand)
       );
     }
@@ -1182,6 +1324,7 @@ function Projects({
     setBuildingProjectId(projectId);
     setNewBuildingName("");
     setCollapsedProjectIds((current) => current.filter((id) => id !== projectId));
+    setCollapsedBuildingSectionProjectIds((current) => current.filter((id) => id !== projectId));
   }
 
   function cancelNewBuilding() {
@@ -1287,8 +1430,16 @@ function Projects({
     }
   }
 
-  function openDeleteConfirm({ title, message, warning = "This cannot be undone.", confirmLabel = "Delete", onConfirm }) {
-    setPendingDelete({ title, message, warning, confirmLabel, onConfirm });
+  function openDeleteConfirm({
+    title,
+    message,
+    warning = "This cannot be undone.",
+    confirmLabel = "Delete",
+    pendingLabel = "Working...",
+    confirmClassName = "danger-button delete-confirm-button",
+    onConfirm,
+  }) {
+    setPendingDelete({ title, message, warning, confirmLabel, pendingLabel, confirmClassName, onConfirm });
   }
 
   function cancelDeleteConfirm() {
@@ -1735,7 +1886,7 @@ function Projects({
     }
   }
 
-  async function toggleTaskArchive(task) {
+  async function applyTaskArchive(task) {
     const nextArchived = !task.is_archived;
 
     const { error } = await supabase
@@ -1767,6 +1918,25 @@ function Projects({
       ? nextArchived ? "Subtask archived" : "Subtask restored"
       : nextArchived ? "Task archived" : "Task restored"
     );
+  }
+
+  function toggleTaskArchive(task) {
+    const nextArchived = !task.is_archived;
+    const itemType = task.parent_task_id ? "subtask" : "task";
+
+    openDeleteConfirm({
+      title: nextArchived
+        ? `Archive ${itemType} "${task.label || "Untitled task"}"?`
+        : `Restore ${itemType} "${task.label || "Untitled task"}"?`,
+      message: nextArchived
+        ? "This will hide it from active task lists. You can restore it later by showing archived tasks."
+        : "This will move it back into active task lists.",
+      warning: nextArchived ? "Nothing gets deleted. This is just moving it out of the way." : "It will show anywhere active tasks are listed again.",
+      confirmLabel: nextArchived ? `Archive ${itemType}` : `Restore ${itemType}`,
+      pendingLabel: nextArchived ? "Archiving..." : "Restoring...",
+      confirmClassName: nextArchived ? "danger-button delete-confirm-button" : "primary-button delete-confirm-button",
+      onConfirm: async () => applyTaskArchive(task),
+    });
   }
 
   function toggleProjectCollapsed(projectId) {
@@ -2000,6 +2170,14 @@ function Projects({
     );
   }
 
+  function toggleBuildingSectionCollapsed(projectId) {
+    setCollapsedBuildingSectionProjectIds((current) =>
+      current.includes(projectId)
+        ? current.filter((id) => id !== projectId)
+        : [...current, projectId]
+    );
+  }
+
   function toggleBuildingCollapsed(buildingId) {
     setCollapsedBuildingIds((current) =>
       current.includes(buildingId)
@@ -2108,15 +2286,8 @@ function Projects({
     }
   }
 
-  async function toggleArchiveProject(project) {
+  async function applyProjectArchive(project) {
     const nextArchived = !project.is_archived;
-    const confirmed = confirm(
-      nextArchived
-        ? `Archive "${project.title}"? It will be hidden from the active list, but the data stays safe.`
-        : `Unarchive "${project.title}"?`
-    );
-
-    if (!confirmed) return;
 
     const { error } = await supabase
       .from("projects")
@@ -2126,16 +2297,35 @@ function Projects({
     if (error) {
       console.error("Failed to update project archive status:", error);
       alert("Failed to update project archive status");
-    } else {
-      await recordActivity({
-        projectId: project.id,
-        action: nextArchived ? "project_archived" : "project_unarchived",
-        details: project.title,
-      });
-
-      await onDataChanged();
-      onSuccess(nextArchived ? "Project archived" : "Project unarchived");
+      return;
     }
+
+    await recordActivity({
+      projectId: project.id,
+      action: nextArchived ? "project_archived" : "project_unarchived",
+      details: project.title || "Untitled project",
+    });
+
+    await onDataChanged();
+    onSuccess(nextArchived ? "Project archived" : "Project restored");
+  }
+
+  function toggleArchiveProject(project) {
+    const nextArchived = !project.is_archived;
+
+    openDeleteConfirm({
+      title: nextArchived
+        ? `Archive project "${project.title || "Untitled project"}"?`
+        : `Restore project "${project.title || "Untitled project"}"?`,
+      message: nextArchived
+        ? "This will hide the project from active project lists and remove its dashboard items. You can restore it later."
+        : "This will move the project back into active views and dashboard lists.",
+      warning: nextArchived ? "Tasks, milestones, buildings, and activity stay saved." : "The project will show anywhere active projects are shown again.",
+      confirmLabel: nextArchived ? "Archive Project" : "Restore Project",
+      pendingLabel: nextArchived ? "Archiving..." : "Restoring...",
+      confirmClassName: nextArchived ? "danger-button delete-confirm-button" : "primary-button delete-confirm-button",
+      onConfirm: async () => applyProjectArchive(project),
+    });
   }
 
   function getSelectableProjectTasks() {
@@ -2293,7 +2483,7 @@ function Projects({
     onSuccess(`Waiting cleared from ${selectedTasks.length} task${selectedTasks.length === 1 ? "" : "s"}`);
   }
 
-  const visibleProjects = projects.filter((project) => {
+  const visibleProjects = sortProjectsByStatusThenNumber(projects.filter((project) => {
     const summary = getProjectTaskSummary(project);
     const search = projectSearch.trim().toLowerCase();
 
@@ -2356,7 +2546,7 @@ function Projects({
     }
 
     return true;
-  });
+  }));
 
   return (
     <section className="card">
@@ -2625,6 +2815,7 @@ function Projects({
           const milestones = project.milestones || [];
           const isCollapsed = collapsedProjectIds.includes(project.id);
           const isMilestonesCollapsed = collapsedMilestoneProjectIds.includes(project.id);
+          const isBuildingSectionCollapsed = collapsedBuildingSectionProjectIds.includes(project.id);
           const taskSummary = getProjectTaskSummary(project);
 
           return (
@@ -2634,11 +2825,7 @@ function Projects({
               } ${project.is_archived ? "project-archived" : ""} ${draggedProjectId === project.id ? "project-dragging" : ""}`}
               id={`project-${project.id}`}
               key={project.id}
-              draggable
-              onDragStart={() => handleProjectDragStart(project.id)}
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={() => handleProjectDrop(project.id)}
-              onDragEnd={() => setDraggedProjectId(null)}
+              draggable={false}
             >
               <div className="project-card-top">
                 <div className="project-title-block">
@@ -2652,12 +2839,16 @@ function Projects({
                     {isCollapsed ? "▶" : "▼"}
                   </button>
 
-                  <div>
-                    <h3 className={getProjectTitleClass(project.status)}>{project.title}</h3>
-                    {project.is_archived && <span className="archived-badge">Archived</span>}
-                    <p className="project-number-line">[{project.project_number || "TBD"}]</p>
-                    <p>{project.architect}</p>
-                    <p>{project.client}</p>
+                  <div className="project-title-content">
+                    <div className="project-title-main-line">
+                      <span className="project-number-compact">{project.project_number || "TBD"}</span>
+                      <h3 className={getProjectTitleClass(project.status)}>{project.title}</h3>
+                      {project.is_archived && <span className="archived-badge">Archived</span>}
+                    </div>
+                    <div className="project-secondary-line">
+                      <span>{project.architect || "No architect"}</span>
+                      <span>{project.client || "No client"}</span>
+                    </div>
                     <div className="project-summary-badges">
                       <span>{taskSummary.incomplete} open task{taskSummary.incomplete === 1 ? "" : "s"}</span>
                       {taskSummary.overdue > 0 && (
@@ -2882,10 +3073,23 @@ function Projects({
                   );
                 })}
               </div>
-                <div className="building-manager">
-                <h4>Buildings</h4>
+                <div className={`building-manager ${isBuildingSectionCollapsed ? "section-collapsed" : ""}`}>
+                <button
+                  type="button"
+                  className="section-collapse-header buildings-section-header"
+                  onClick={() => toggleBuildingSectionCollapsed(project.id)}
+                  aria-expanded={!isBuildingSectionCollapsed}
+                >
+                  <span className="section-title-wrap">
+                    <span className="attention-disclosure-arrow">
+                      {isBuildingSectionCollapsed ? "▶" : "▼"}
+                    </span>
+                    <h4>Buildings</h4>
+                  </span>
+                  <span className="section-count-pill">{buildings.length}</span>
+                </button>
 
-                {buildingProjectId === project.id && (
+                {!isBuildingSectionCollapsed && buildingProjectId === project.id && (
                   <div className="building-create-form">
                     <input
                       value={newBuildingName}
@@ -2911,12 +3115,13 @@ function Projects({
                   </div>
                 )}
 
-                {buildings.length === 0 && (
+                {!isBuildingSectionCollapsed && buildings.length === 0 && (
                   <p className="muted-text">
                     No buildings yet. Add one before assigning building-specific milestones.
                   </p>
                 )}
 
+                {!isBuildingSectionCollapsed && (
                 <div className="building-chip-list">
                   {(() => {
                     const generalTasks = (project.tasks || []).filter(
@@ -3676,6 +3881,7 @@ function Projects({
                       );
                     })}
                   </div>
+                )}
               </div>
               </div>
             </article>
@@ -3712,11 +3918,11 @@ function Projects({
               </button>
               <button
                 type="button"
-                className="danger-button delete-confirm-button"
+                className={pendingDelete.confirmClassName || "danger-button delete-confirm-button"}
                 onClick={confirmPendingDelete}
                 disabled={deletingItem}
               >
-                {deletingItem ? "Deleting..." : pendingDelete.confirmLabel}
+                {deletingItem ? pendingDelete.pendingLabel || "Working..." : pendingDelete.confirmLabel}
               </button>
             </div>
           </section>
