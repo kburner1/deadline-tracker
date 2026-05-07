@@ -130,36 +130,42 @@ function getActivityText(item) {
     milestone_date_changed: "Milestone date changed",
     task_waiting_started: "Task marked waiting",
     task_waiting_cleared: "Task waiting cleared",
+    task_archived: "Task archived",
+    task_unarchived: "Task unarchived",
+    subtask_archived: "Subtask archived",
+    subtask_unarchived: "Subtask unarchived",
   };
 
   return `${labels[item.action] || item.action || "Activity"}${details}`;
 }
 
-function ActivityPanel({ logs = [] }) {
+function ActivityPanel({ logs = [], compact = false }) {
   const recentLogs = [...logs]
     .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""))
     .slice(0, 8);
 
   return (
-    <div className="activity-panel">
-      <div className="activity-header">
-        <h4>Activity</h4>
-        <span>{recentLogs.length}</span>
-      </div>
+    <details className={`activity-collapsible ${compact ? "activity-collapsible-compact" : ""}`}>
+      <summary className="activity-summary">
+        <span>Activity</span>
+        <em>{recentLogs.length}</em>
+      </summary>
 
-      {recentLogs.length === 0 ? (
-        <p className="muted-text">No activity yet. The audit goblin is waiting.</p>
-      ) : (
-        <div className="activity-list">
-          {recentLogs.map((item) => (
-            <div className="activity-row" key={item.id}>
-              <span>{getActivityText(item)}</span>
-              <em>{formatActivityDate(item.created_at)}</em>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+      <div className="activity-panel">
+        {recentLogs.length === 0 ? (
+          <p className="muted-text">No activity yet. The audit goblin is waiting.</p>
+        ) : (
+          <div className="activity-list">
+            {recentLogs.map((item) => (
+              <div className="activity-row" key={item.id}>
+                <span>{getActivityText(item)}</span>
+                <em>{formatActivityDate(item.created_at)}</em>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </details>
   );
 }
 
@@ -212,7 +218,7 @@ function collectProjectTasks(projects) {
   return projects
     .flatMap((project) => {
       const generalTasks = (project.tasks || [])
-        .filter((task) => !task.building_id)
+        .filter((task) => !task.building_id && !task.is_archived)
         .map((task) => ({
           ...task,
           project_title: project.title,
@@ -221,7 +227,9 @@ function collectProjectTasks(projects) {
         }));
 
       const buildingTasks = (project.buildings || []).flatMap((building) =>
-        (building.tasks || []).map((task) => ({
+        (building.tasks || [])
+        .filter((task) => !task.is_archived)
+        .map((task) => ({
           ...task,
           project_title: project.title,
           project_id: project.id,
@@ -421,6 +429,7 @@ function CalendarMonth({ events, toggles, onEventClick, onMilestoneDrop }) {
   function handleDayDragOver(event) {
     if (!onMilestoneDrop) return;
     event.preventDefault();
+    event.stopPropagation();
     event.dataTransfer.dropEffect = "move";
   }
 
@@ -428,6 +437,7 @@ function CalendarMonth({ events, toggles, onEventClick, onMilestoneDrop }) {
     if (!onMilestoneDrop) return;
 
     event.preventDefault();
+    event.stopPropagation();
 
     const raw = event.dataTransfer.getData("application/json");
     if (!raw) return;
@@ -521,7 +531,14 @@ function CalendarMonth({ events, toggles, onEventClick, onMilestoneDrop }) {
   );
 }
 
-function Dashboard({ events, projects, teamMembers = [], onJumpToProject = () => {}, onDataChanged = async () => {} }) {
+function Dashboard({
+  events,
+  projects,
+  teamMembers = [],
+  onJumpToProject = () => {},
+  onDataChanged = async () => {},
+  onSuccess = () => {},
+}) {
   const [selectedDashboardAssigneeId, setSelectedDashboardAssigneeId] = useState("__all__");
   const sortedEvents = [...events].sort((a, b) =>
     (a.due_date || "").localeCompare(b.due_date || "")
@@ -630,6 +647,7 @@ function Dashboard({ events, projects, teamMembers = [], onJumpToProject = () =>
       alert("Failed to complete task");
     } else {
       await onDataChanged();
+      onSuccess("Task completed");
     }
   }
 
@@ -870,6 +888,7 @@ function Projects({
   highlightedTaskId = null,
   highlightedMilestoneId = null,
   onDataChanged,
+  onSuccess = () => {},
 }) {
   const [milestoneProjectId, setMilestoneProjectId] = useState(null);
   const [milestoneLabel, setMilestoneLabel] = useState("");
@@ -879,6 +898,9 @@ function Projects({
   const [buildingProjectId, setBuildingProjectId] = useState(null);
   const [newBuildingName, setNewBuildingName] = useState("");
   const [savingBuilding, setSavingBuilding] = useState(false);
+  const [quickTaskValues, setQuickTaskValues] = useState({});
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const [deletingItem, setDeletingItem] = useState(false);
   const [editingBuildingId, setEditingBuildingId] = useState(null);
   const [editingBuildingName, setEditingBuildingName] = useState("");
   const [editingMilestoneId, setEditingMilestoneId] = useState(null);
@@ -905,6 +927,7 @@ function Projects({
     }
   });
   const [showCompletedTasks, setShowCompletedTasks] = useState(true);
+  const [showArchivedTasks, setShowArchivedTasks] = useState(false);
   const [hideCompletedProjects, setHideCompletedProjects] = useState(false);
   const [showArchivedProjects, setShowArchivedProjects] = useState(false);
   const [showOnlyOverdueProjects, setShowOnlyOverdueProjects] = useState(false);
@@ -926,6 +949,7 @@ function Projects({
     status: "Design",
   });
   const [draggedProjectId, setDraggedProjectId] = useState(null);
+  const projectSearchRef = useRef(null);
 
   useEffect(() => {
     localStorage.setItem(
@@ -1021,6 +1045,49 @@ function Projects({
     }
   }, [highlightedProjectId, highlightedTaskId, highlightedMilestoneId, projects]);
 
+  useEffect(() => {
+    function handleKeyboardShortcuts(event) {
+      const isMac = navigator.platform.toUpperCase().includes("MAC");
+      const modifierPressed = isMac ? event.metaKey : event.ctrlKey;
+
+      if (event.key === "Escape") {
+        closeFormsAndMenus();
+        return;
+      }
+
+      if (modifierPressed && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        projectSearchRef.current?.focus();
+        projectSearchRef.current?.select();
+        return;
+      }
+
+      if (modifierPressed && event.key === "Enter") {
+        if (taskBuildingId) {
+          event.preventDefault();
+          saveOpenTaskFormFromKeyboard();
+        }
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyboardShortcuts);
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyboardShortcuts);
+    };
+  }, [
+    taskBuildingId,
+    taskLabel,
+    taskDueDate,
+    taskMilestoneId,
+    taskAssigneeId,
+    taskNotes,
+    editingTaskId,
+    savingTask,
+    projects,
+  ]);
+
+
   function updateProjectForm(field, value) {
     setProjectForm((current) => ({
       ...current,
@@ -1096,10 +1163,12 @@ function Projects({
       console.error("Failed to create project:", error);
       alert("Failed to create project");
     } else {
+      const wasEditingProject = Boolean(editingProjectId);
       resetProjectForm();
       setEditingProjectId(null);
       setShowProjectForm(false);
       await onDataChanged();
+      onSuccess(wasEditingProject ? "Project updated" : "Project added");
     }
   }
 
@@ -1119,6 +1188,43 @@ function Projects({
     setBuildingProjectId(null);
     setNewBuildingName("");
   }
+
+  function closeFormsAndMenus() {
+    closeTaskForm();
+    closeMilestoneForm();
+    cancelNewBuilding();
+    cancelEditBuilding();
+    closeSubtaskForm();
+    closeEditSubtaskForm();
+    cancelNewProject();
+    setEditingTeamMemberId(null);
+    setEditingTeamMemberName("");
+
+    document
+      .querySelectorAll("details.compact-menu[open], details.task-actions-menu[open]")
+      .forEach((menu) => menu.removeAttribute("open"));
+  }
+
+  function saveOpenTaskFormFromKeyboard() {
+    if (!taskBuildingId || savingTask) return;
+
+    const generalPrefix = "general-";
+
+    if (typeof taskBuildingId === "string" && taskBuildingId.startsWith(generalPrefix)) {
+      const projectId = taskBuildingId.replace(generalPrefix, "");
+      saveTask(projectId, null);
+      return;
+    }
+
+    const projectWithBuilding = projects.find((project) =>
+      (project.buildings || []).some((building) => building.id === taskBuildingId)
+    );
+
+    if (projectWithBuilding) {
+      saveTask(projectWithBuilding.id, taskBuildingId);
+    }
+  }
+
 
   async function saveNewBuilding(projectId) {
     if (!newBuildingName.trim()) {
@@ -1141,6 +1247,7 @@ function Projects({
     } else {
       cancelNewBuilding();
       await onDataChanged();
+      onSuccess("Building added");
     }
 
     setSavingBuilding(false);
@@ -1176,24 +1283,50 @@ function Projects({
     } else {
       cancelEditBuilding();
       await onDataChanged();
+      onSuccess("Building updated");
     }
   }
 
-  async function deleteBuilding(building) {
-    const confirmed = confirm(
-      `Delete "${building.name}"? Any milestone links to this building will also be removed.`
-    );
+  function openDeleteConfirm({ title, message, warning = "This cannot be undone.", confirmLabel = "Delete", onConfirm }) {
+    setPendingDelete({ title, message, warning, confirmLabel, onConfirm });
+  }
 
-    if (!confirmed) return;
+  function cancelDeleteConfirm() {
+    if (deletingItem) return;
+    setPendingDelete(null);
+  }
 
-    const { error } = await supabase.from("buildings").delete().eq("id", building.id);
+  async function confirmPendingDelete() {
+    if (!pendingDelete || deletingItem) return;
 
-    if (error) {
-      console.error("Failed to delete building:", error);
-      alert("Failed to delete building");
-    } else {
-      await onDataChanged();
+    setDeletingItem(true);
+
+    try {
+      await pendingDelete.onConfirm();
+      setPendingDelete(null);
+    } finally {
+      setDeletingItem(false);
     }
+  }
+
+  function deleteBuilding(building) {
+    openDeleteConfirm({
+      title: `Delete building "${building.name}"?`,
+      message: "This will delete the building and tasks under it. Milestone links to this building will also be removed.",
+      confirmLabel: "Delete Building",
+      onConfirm: async () => {
+        const { error } = await supabase.from("buildings").delete().eq("id", building.id);
+
+        if (error) {
+          console.error("Failed to delete building:", error);
+          alert("Failed to delete building");
+          return;
+        }
+
+        await onDataChanged();
+        onSuccess("Building deleted");
+      },
+    });
   }
 
   async function updateProjectStatus(projectId, status) {
@@ -1207,6 +1340,7 @@ function Projects({
       alert("Failed to update project status");
     } else {
       await onDataChanged();
+      onSuccess("Project status updated");
     }
   }
 
@@ -1392,8 +1526,13 @@ function Projects({
         }
       }
 
+      const milestoneMessage = editingMilestoneId
+        ? `Milestone updated${previousDueDate && previousDueDate !== dueDate ? `; ${linkedTasksToShift.length} task${linkedTasksToShift.length === 1 ? "" : "s"} shifted` : ""}`
+        : "Milestone added";
+
       closeMilestoneForm();
       await onDataChanged();
+      onSuccess(milestoneMessage);
     } catch (error) {
       console.error("Failed to save milestone:", error);
       alert("Failed to save milestone");
@@ -1402,21 +1541,27 @@ function Projects({
     }
   }
 
-  async function deleteMilestone(milestone) {
-    const confirmed = confirm(`Delete milestone "${milestone.label}"?`);
-    if (!confirmed) return;
+  function deleteMilestone(milestone) {
+    openDeleteConfirm({
+      title: `Delete milestone "${milestone.label}"?`,
+      message: "This removes the milestone from the project calendar. Linked task due dates will not be shifted.",
+      confirmLabel: "Delete Milestone",
+      onConfirm: async () => {
+        const { error } = await supabase
+          .from("milestones")
+          .delete()
+          .eq("id", milestone.id);
 
-    const { error } = await supabase
-      .from("milestones")
-      .delete()
-      .eq("id", milestone.id);
+        if (error) {
+          console.error("Failed to delete milestone:", error);
+          alert("Failed to delete milestone");
+          return;
+        }
 
-    if (error) {
-      console.error("Failed to delete milestone:", error);
-      alert("Failed to delete milestone");
-    } else {
-      await onDataChanged();
-    }
+        await onDataChanged();
+        onSuccess("Milestone deleted");
+      },
+    });
   }
 
   function openTaskForm(scopeId) {
@@ -1509,11 +1654,57 @@ function Projects({
         });
       }
 
+      const taskMessage = editingTaskId ? "Task updated" : "Task added";
       closeTaskForm();
       await onDataChanged();
+      onSuccess(taskMessage);
     }
 
     setSavingTask(false);
+  }
+
+  function updateQuickTaskValue(scopeKey, value) {
+    setQuickTaskValues((current) => ({
+      ...current,
+      [scopeKey]: value,
+    }));
+  }
+
+  async function saveQuickTask({ projectId, buildingId = null, scopeKey }) {
+    const label = (quickTaskValues[scopeKey] || "").trim();
+
+    if (!label) return;
+
+    const { error } = await supabase.from("tasks").insert([
+      {
+        project_id: projectId,
+        building_id: buildingId,
+        label,
+        is_complete: false,
+        is_archived: false,
+        parent_task_id: null,
+      },
+    ]);
+
+    if (error) {
+      console.error("Failed to quick-add task:", error);
+      alert("Failed to quick-add task");
+      return;
+    }
+
+    setQuickTaskValues((current) => ({
+      ...current,
+      [scopeKey]: "",
+    }));
+
+    await onDataChanged();
+    onSuccess("Task added");
+  }
+
+  function handleQuickTaskKeyDown(event, options) {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    saveQuickTask(options);
   }
 
   async function toggleTask(task) {
@@ -1540,21 +1731,42 @@ function Projects({
         details: task.label || "Untitled task",
       });
       await onDataChanged();
+      onSuccess(nextComplete ? "Task completed" : "Task reopened");
     }
   }
 
-  async function deleteTask(task) {
-    const confirmed = confirm(`Delete task "${task.label}"?`);
-    if (!confirmed) return;
+  async function toggleTaskArchive(task) {
+    const nextArchived = !task.is_archived;
 
-    const { error } = await supabase.from("tasks").delete().eq("id", task.id);
+    const { error } = await supabase
+      .from("tasks")
+      .update({ is_archived: nextArchived })
+      .eq("id", task.id);
 
     if (error) {
-      console.error("Failed to delete task:", error);
-      alert("Failed to delete task");
-    } else {
-      await onDataChanged();
+      console.error("Failed to archive task:", error);
+      alert("Failed to archive task");
+      return;
     }
+
+    await recordActivity({
+      projectId: task.project_id,
+      taskId: task.id,
+      action: task.parent_task_id
+        ? nextArchived
+          ? "subtask_archived"
+          : "subtask_unarchived"
+        : nextArchived
+          ? "task_archived"
+          : "task_unarchived",
+      details: task.label || "Untitled task",
+    });
+
+    await onDataChanged();
+    onSuccess(task.parent_task_id
+      ? nextArchived ? "Subtask archived" : "Subtask restored"
+      : nextArchived ? "Task archived" : "Task restored"
+    );
   }
 
   function toggleProjectCollapsed(projectId) {
@@ -1600,6 +1812,7 @@ function Projects({
       alert("Failed to reorder projects");
     } else {
       await onDataChanged();
+      onSuccess("Projects reordered");
     }
   }
 
@@ -1631,7 +1844,7 @@ function Projects({
       if (task?.id) taskMap.set(task.id, task);
     });
 
-    return Array.from(taskMap.values());
+    return Array.from(taskMap.values()).filter((task) => !task.is_archived);
   }
 
   function getProjectTaskSummary(project) {
@@ -1671,6 +1884,7 @@ function Projects({
     } else {
       setNewTeamMemberName("");
       await onDataChanged();
+      onSuccess("Team member added");
     }
   }
 
@@ -1701,10 +1915,11 @@ function Projects({
     } else {
       cancelEditTeamMember();
       await onDataChanged();
+      onSuccess("Team member updated");
     }
   }
 
-  async function deleteTeamMember(member) {
+  function deleteTeamMember(member) {
     const assignedTaskCount = getProjectTasksFromAll(projects).filter(
       (task) => task.assigned_to === member.id
     ).length;
@@ -1714,20 +1929,26 @@ function Projects({
       return;
     }
 
-    const confirmed = confirm(`Delete team member "${member.name}"?`);
-    if (!confirmed) return;
+    openDeleteConfirm({
+      title: `Delete team member "${member.name}"?`,
+      message: "This removes the person from your team list. Existing project history stays in place.",
+      confirmLabel: "Delete Team Member",
+      onConfirm: async () => {
+        const { error } = await supabase
+          .from("team_members")
+          .delete()
+          .eq("id", member.id);
 
-    const { error } = await supabase
-      .from("team_members")
-      .delete()
-      .eq("id", member.id);
+        if (error) {
+          console.error("Failed to delete team member:", error);
+          alert("Failed to delete team member");
+          return;
+        }
 
-    if (error) {
-      console.error("Failed to delete team member:", error);
-      alert("Failed to delete team member");
-    } else {
-      await onDataChanged();
-    }
+        await onDataChanged();
+        onSuccess("Team member deleted");
+      },
+    });
   }
 
   async function recordActivity({ projectId, taskId = null, milestoneId = null, action, details = "" }) {
@@ -1759,6 +1980,7 @@ function Projects({
       alert("Failed to update task assignee");
     } else {
       await onDataChanged();
+      onSuccess(assignedTo ? "Task reassigned" : "Task unassigned");
     }
   }
 
@@ -1829,6 +2051,7 @@ function Projects({
       });
       closeEditSubtaskForm();
       await onDataChanged();
+      onSuccess("Subtask updated");
     }
   }
 
@@ -1854,6 +2077,7 @@ function Projects({
     } else {
       closeSubtaskForm();
       await onDataChanged();
+      onSuccess("Subtask added");
     }
   }
 
@@ -1880,6 +2104,7 @@ function Projects({
       });
 
       await onDataChanged();
+      onSuccess(nextIsWaiting ? "Marked waiting" : "Waiting cleared");
     }
   }
 
@@ -1909,6 +2134,7 @@ function Projects({
       });
 
       await onDataChanged();
+      onSuccess(nextArchived ? "Project archived" : "Project unarchived");
     }
   }
 
@@ -1959,6 +2185,7 @@ function Projects({
 
     setSelectedTaskIds([]);
     await onDataChanged();
+    onSuccess(`${selectedTasks.length} task${selectedTasks.length === 1 ? "" : "s"} completed`);
   }
 
   async function bulkAssignSelected() {
@@ -1995,6 +2222,7 @@ function Projects({
 
     setSelectedTaskIds([]);
     await onDataChanged();
+    onSuccess(`${selectedTasks.length} task${selectedTasks.length === 1 ? "" : "s"} assigned`);
   }
 
   async function bulkSetWaitingSelected() {
@@ -2028,6 +2256,7 @@ function Projects({
 
     setSelectedTaskIds([]);
     await onDataChanged();
+    onSuccess(`${selectedTasks.length} task${selectedTasks.length === 1 ? "" : "s"} set waiting`);
   }
 
   async function bulkClearWaitingSelected() {
@@ -2061,6 +2290,7 @@ function Projects({
 
     setSelectedTaskIds([]);
     await onDataChanged();
+    onSuccess(`Waiting cleared from ${selectedTasks.length} task${selectedTasks.length === 1 ? "" : "s"}`);
   }
 
   const visibleProjects = projects.filter((project) => {
@@ -2217,6 +2447,7 @@ function Projects({
         <label className="project-search-label">
           Search
           <input
+            ref={projectSearchRef}
             value={projectSearch}
             onChange={(event) => setProjectSearch(event.target.value)}
             placeholder="Project, client, building..."
@@ -2240,6 +2471,15 @@ function Projects({
                   type="checkbox"
                   checked={showCompletedTasks}
                   onChange={(event) => setShowCompletedTasks(event.target.checked)}
+                />
+              </label>
+
+              <label className="project-tool-row project-tool-checkbox-row">
+                <span>Show archived tasks</span>
+                <input
+                  type="checkbox"
+                  checked={showArchivedTasks}
+                  onChange={(event) => setShowArchivedTasks(event.target.checked)}
                 />
               </label>
 
@@ -2430,31 +2670,30 @@ function Projects({
                 </div>
 
                 <div className="project-actions project-actions-compact">
-                  <button
-                    type="button"
-                    className="project-action-button"
-                    onClick={() => addBuilding(project.id)}
-                  >
-                    <Building2 size={14} /> Add Building
-                  </button>
-
-                  <button
-                    type="button"
-                    className="project-action-button"
-                    onClick={() => openMilestoneForm(project.id)}
-                  >
-                    + Milestone
-                  </button>
-
                   <details className="compact-menu project-card-menu">
                     <summary aria-label="More project actions" title="More project actions">⋯</summary>
                     <div className="compact-menu-panel project-card-menu-panel">
+                      <button
+                        type="button"
+                        onClick={() => addBuilding(project.id)}
+                      >
+                        Add Building
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => openMilestoneForm(project.id)}
+                      >
+                        Add Milestone
+                      </button>
+
                       <button
                         type="button"
                         onClick={() => openEditProject(project)}
                       >
                         Edit Project
                       </button>
+
                       <button
                         type="button"
                         className={project.is_archived ? "primary-button" : ""}
@@ -2462,6 +2701,13 @@ function Projects({
                       >
                         {project.is_archived ? "Unarchive" : "Archive"}
                       </button>
+
+                      <div className="project-menu-divider" />
+
+                      <ActivityPanel
+                        logs={activityLogs.filter((item) => item.project_id === project.id)}
+                        compact
+                      />
                     </div>
                   </details>
 
@@ -2674,7 +2920,10 @@ function Projects({
                 <div className="building-chip-list">
                   {(() => {
                     const generalTasks = (project.tasks || []).filter(
-                      (task) => !task.building_id && (showCompletedTasks || !task.is_complete)
+                      (task) =>
+                        !task.building_id &&
+                        (showCompletedTasks || !task.is_complete) &&
+                        (showArchivedTasks || !task.is_archived)
                     );
                     const completedGeneralTaskCount = generalTasks.filter(
                       (task) => task.is_complete
@@ -2792,6 +3041,33 @@ function Projects({
                           </div>
                         )}
 
+                        <div className="quick-task-row">
+                          <input
+                            value={quickTaskValues[generalScopeId] || ""}
+                            onChange={(event) => updateQuickTaskValue(generalScopeId, event.target.value)}
+                            onKeyDown={(event) =>
+                              handleQuickTaskKeyDown(event, {
+                                projectId: project.id,
+                                buildingId: null,
+                                scopeKey: generalScopeId,
+                              })
+                            }
+                            placeholder="+ Quick task..."
+                          />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              saveQuickTask({
+                                projectId: project.id,
+                                buildingId: null,
+                                scopeKey: generalScopeId,
+                              })
+                            }
+                          >
+                            Add
+                          </button>
+                        </div>
+
                         {generalTasks.length > 0 && (
                           <div className="task-list">
                             {generalTasks.filter((task) => !task.parent_task_id).map((task) => (
@@ -2885,7 +3161,7 @@ function Projects({
                                       <button type="button" onClick={() => openSubtaskForm(task.id)}>+ Subtask</button>
                                       <button type="button" onClick={() => openEditTaskForm(generalScopeId, task)}>Edit</button>
                                       <button type="button" onClick={() => toggleTaskWaiting(task)}>{task.is_waiting ? "Clear Waiting" : "Waiting"}</button>
-                                      <button type="button" className="danger-button" onClick={() => deleteTask(task)}>Delete</button>
+                                      <button type="button" className={task.is_archived ? "" : "danger-button"} onClick={() => toggleTaskArchive(task)}>{task.is_archived ? "Unarchive" : "Archive"}</button>
                                     </div>
                                   </details>
                                 </div>
@@ -2897,7 +3173,7 @@ function Projects({
                                       <div
                                         className={`subtask-row ${
                                           subtask.is_complete ? "task-complete" : ""
-                                        }`}
+                                        } ${subtask.is_archived ? "task-archived" : ""}`}
                                         key={subtask.id}
                                       >
                                         {editingSubtaskId === subtask.id ? (
@@ -2952,10 +3228,10 @@ function Projects({
                                               </button>
                                               <button
                                                 type="button"
-                                                className="danger-button"
-                                                onClick={() => deleteTask(subtask)}
+                                                className={subtask.is_archived ? "" : "danger-button"}
+                                                onClick={() => toggleTaskArchive(subtask)}
                                               >
-                                                Delete
+                                                {subtask.is_archived ? "Unarchive" : "Archive"}
                                               </button>
                                             </div>
                                           </>
@@ -2996,12 +3272,15 @@ function Projects({
 
                   {buildings.map((building) => {
                       const buildingTasks = (building.tasks || []).filter(
-                        (task) => showCompletedTasks || !task.is_complete
+                        (task) =>
+                          (showCompletedTasks || !task.is_complete) &&
+                          (showArchivedTasks || !task.is_archived)
                       );
                       const completedTaskCount = buildingTasks.filter(
                         (task) => task.is_complete
                       ).length;
                       const isBuildingCollapsed = collapsedBuildingIds.includes(building.id);
+                      const buildingScopeId = `building-${building.id}`;
 
                       return (
                         <div className={`building-task-card ${isBuildingCollapsed ? "section-collapsed" : ""}`} key={building.id}>
@@ -3167,6 +3446,35 @@ function Projects({
                             </div>
                           )}
 
+                          {!isBuildingCollapsed && (
+                            <div className="quick-task-row">
+                              <input
+                                value={quickTaskValues[buildingScopeId] || ""}
+                                onChange={(event) => updateQuickTaskValue(buildingScopeId, event.target.value)}
+                                onKeyDown={(event) =>
+                                  handleQuickTaskKeyDown(event, {
+                                    projectId: project.id,
+                                    buildingId: building.id,
+                                    scopeKey: buildingScopeId,
+                                  })
+                                }
+                                placeholder="+ Quick task..."
+                              />
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  saveQuickTask({
+                                    projectId: project.id,
+                                    buildingId: building.id,
+                                    scopeKey: buildingScopeId,
+                                  })
+                                }
+                              >
+                                Add
+                              </button>
+                            </div>
+                          )}
+
                           {!isBuildingCollapsed && buildingTasks.length > 0 && (
                             <div className="task-list">
                               {buildingTasks.filter((task) => !task.parent_task_id).map((task) => (
@@ -3259,7 +3567,7 @@ function Projects({
                                         <button type="button" onClick={() => openSubtaskForm(task.id)}>+ Subtask</button>
                                         <button type="button" onClick={() => openEditTaskForm(building.id, task)}>Edit</button>
                                         <button type="button" onClick={() => toggleTaskWaiting(task)}>{task.is_waiting ? "Clear Waiting" : "Waiting"}</button>
-                                        <button type="button" className="danger-button" onClick={() => deleteTask(task)}>Delete</button>
+                                        <button type="button" className={task.is_archived ? "" : "danger-button"} onClick={() => toggleTaskArchive(task)}>{task.is_archived ? "Unarchive" : "Archive"}</button>
                                       </div>
                                     </details>
                                   </div>
@@ -3326,10 +3634,10 @@ function Projects({
                                                 </button>
                                                 <button
                                                   type="button"
-                                                  className="danger-button"
-                                                  onClick={() => deleteTask(subtask)}
+                                                  className={subtask.is_archived ? "" : "danger-button"}
+                                                  onClick={() => toggleTaskArchive(subtask)}
                                                 >
-                                                  Delete
+                                                  {subtask.is_archived ? "Unarchive" : "Archive"}
                                                 </button>
                                               </div>
                                             </>
@@ -3369,16 +3677,51 @@ function Projects({
                     })}
                   </div>
               </div>
-
-
-              <ActivityPanel
-                logs={activityLogs.filter((item) => item.project_id === project.id)}
-              />
               </div>
             </article>
           );
         })}
       </div>
+
+      {pendingDelete && (
+        <div className="modal-backdrop" onClick={cancelDeleteConfirm}>
+          <section
+            className="confirm-modal delete-confirm-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="confirm-modal-header">
+              <div>
+                <h2>{pendingDelete.title}</h2>
+                <p>{pendingDelete.message}</p>
+              </div>
+              <button type="button" onClick={cancelDeleteConfirm} disabled={deletingItem}>
+                Close
+              </button>
+            </div>
+
+            {pendingDelete.warning && (
+              <div className="delete-warning-card">
+                <strong>Heads up</strong>
+                <span>{pendingDelete.warning}</span>
+              </div>
+            )}
+
+            <div className="confirm-modal-actions">
+              <button type="button" onClick={cancelDeleteConfirm} disabled={deletingItem}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="danger-button delete-confirm-button"
+                onClick={confirmPendingDelete}
+                disabled={deletingItem}
+              >
+                {deletingItem ? "Deleting..." : pendingDelete.confirmLabel}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </section>
   );
 }
@@ -3454,6 +3797,53 @@ function App() {
   const [teamMembers, setTeamMembers] = useState([]);
   const [activityLogs, setActivityLogs] = useState([]);
   const scrollRestoreRef = useRef(null);
+  const successTimeoutRef = useRef(null);
+  const undoTimeoutRef = useRef(null);
+  const [successMessage, setSuccessMessage] = useState("");
+  const [undoMilestoneMove, setUndoMilestoneMove] = useState(null);
+  const [undoingMilestoneMove, setUndoingMilestoneMove] = useState(false);
+  const [pendingMilestoneMove, setPendingMilestoneMove] = useState(null);
+  const [movingMilestone, setMovingMilestone] = useState(false);
+
+  function showSuccess(message) {
+    if (!message) return;
+    setSuccessMessage(message);
+
+    if (successTimeoutRef.current) {
+      window.clearTimeout(successTimeoutRef.current);
+    }
+
+    successTimeoutRef.current = window.setTimeout(() => {
+      setSuccessMessage("");
+      successTimeoutRef.current = null;
+    }, 2400);
+  }
+
+  function showUndoMilestoneMove(payload) {
+    if (!payload) return;
+
+    setUndoMilestoneMove(payload);
+
+    if (undoTimeoutRef.current) {
+      window.clearTimeout(undoTimeoutRef.current);
+    }
+
+    undoTimeoutRef.current = window.setTimeout(() => {
+      setUndoMilestoneMove(null);
+      undoTimeoutRef.current = null;
+    }, 12000);
+  }
+
+  function dismissUndoMilestoneMove() {
+    if (undoingMilestoneMove) return;
+
+    setUndoMilestoneMove(null);
+
+    if (undoTimeoutRef.current) {
+      window.clearTimeout(undoTimeoutRef.current);
+      undoTimeoutRef.current = null;
+    }
+  }
 
   function restoreScrollPosition() {
     const savedY = scrollRestoreRef.current;
@@ -3629,7 +4019,8 @@ function App() {
     return Array.from(taskMap.values());
   }
 
-  async function moveMilestoneFromCalendar(calendarEvent, newDueDate) {
+  function moveMilestoneFromCalendar(calendarEvent, newDueDate) {
+    // Clean modal flow only: this function should never call browser confirm().
     if (!calendarEvent || calendarEvent.event_type !== "design_milestone") return;
     if (!newDueDate || newDueDate === calendarEvent.due_date) return;
 
@@ -3655,11 +4046,31 @@ function App() {
       !task.parent_task_id
     );
 
-    const confirmed = confirm(
-      `Move "${calendarEvent.label || milestone?.label || "this milestone"}" from ${formatDateForInput(oldDueDate)} to ${formatDateForInput(newDueDate)}?\n\nThis will shift ${linkedTasksToShift.length} linked incomplete dated task${linkedTasksToShift.length === 1 ? "" : "s"} by ${shiftDays > 0 ? "+" : ""}${shiftDays} day${Math.abs(shiftDays) === 1 ? "" : "s"}.`
-    );
+    setPendingMilestoneMove({
+      calendarEvent,
+      newDueDate,
+      project,
+      milestone,
+      oldDueDate,
+      shiftDays,
+      linkedTasksToShift,
+    });
+  }
 
-    if (!confirmed) return;
+  async function confirmMilestoneMove() {
+    if (!pendingMilestoneMove || movingMilestone) return;
+
+    const {
+      calendarEvent,
+      newDueDate,
+      project,
+      milestone,
+      oldDueDate,
+      shiftDays,
+      linkedTasksToShift,
+    } = pendingMilestoneMove;
+
+    setMovingMilestone(true);
 
     const { error: milestoneError } = await supabase
       .from("milestones")
@@ -3669,20 +4080,29 @@ function App() {
     if (milestoneError) {
       console.error("Failed to move milestone from calendar:", milestoneError);
       alert("Failed to move milestone");
+      setMovingMilestone(false);
       return;
     }
 
-    if (linkedTasksToShift.length > 0) {
-      const taskUpdates = linkedTasksToShift.map((task) => {
-        const shiftedDate = parseDateOnly(task.due_date);
-        shiftedDate.setDate(shiftedDate.getDate() + shiftDays);
-        const shiftedDueDate = shiftedDate.toISOString().slice(0, 10);
+    const shiftedTaskChanges = linkedTasksToShift.map((task) => {
+      const shiftedDate = parseDateOnly(task.due_date);
+      shiftedDate.setDate(shiftedDate.getDate() + shiftDays);
 
-        return supabase
+      return {
+        id: task.id,
+        label: task.label || "Untitled task",
+        oldDueDate: task.due_date,
+        newDueDate: shiftedDate.toISOString().slice(0, 10),
+      };
+    });
+
+    if (shiftedTaskChanges.length > 0) {
+      const taskUpdates = shiftedTaskChanges.map((task) =>
+        supabase
           .from("tasks")
-          .update({ due_date: shiftedDueDate })
-          .eq("id", task.id);
-      });
+          .update({ due_date: task.newDueDate })
+          .eq("id", task.id)
+      );
 
       const taskUpdateResults = await Promise.all(taskUpdates);
       const failedTaskUpdate = taskUpdateResults.find((result) => result.error);
@@ -3706,7 +4126,79 @@ function App() {
       console.error("Failed to record calendar milestone move:", activityError);
     }
 
+    setPendingMilestoneMove(null);
+    setMovingMilestone(false);
     await refreshData();
+    showSuccess(`Milestone moved ${shiftDays > 0 ? "+" : ""}${shiftDays} day${Math.abs(shiftDays) === 1 ? "" : "s"}; ${linkedTasksToShift.length} task${linkedTasksToShift.length === 1 ? "" : "s"} shifted`);
+    showUndoMilestoneMove({
+      projectId: project.id,
+      milestoneId: calendarEvent.id,
+      milestoneLabel: calendarEvent.label || milestone?.label || "Milestone",
+      oldDueDate,
+      newDueDate,
+      shiftDays,
+      shiftedTaskChanges,
+    });
+  }
+
+  async function undoLastMilestoneMove() {
+    if (!undoMilestoneMove || undoingMilestoneMove) return;
+
+    const move = undoMilestoneMove;
+    setUndoingMilestoneMove(true);
+
+    const { error: milestoneError } = await supabase
+      .from("milestones")
+      .update({ due_date: move.oldDueDate })
+      .eq("id", move.milestoneId);
+
+    if (milestoneError) {
+      console.error("Failed to undo milestone move:", milestoneError);
+      alert("Failed to undo milestone move");
+      setUndoingMilestoneMove(false);
+      return;
+    }
+
+    if (move.shiftedTaskChanges.length > 0) {
+      const taskUndoResults = await Promise.all(
+        move.shiftedTaskChanges.map((task) =>
+          supabase
+            .from("tasks")
+            .update({ due_date: task.oldDueDate })
+            .eq("id", task.id)
+        )
+      );
+
+      const failedTaskUndo = taskUndoResults.find((result) => result.error);
+
+      if (failedTaskUndo?.error) {
+        console.error("Milestone date was restored, but one or more linked tasks failed to undo:", failedTaskUndo.error);
+        alert("Milestone date was restored, but one or more linked tasks failed to undo. Refresh and check linked tasks.");
+      }
+    }
+
+    const { error: activityError } = await supabase.from("activity_log").insert([
+      {
+        project_id: move.projectId,
+        milestone_id: move.milestoneId,
+        action: "milestone_date_changed",
+        details: `${move.milestoneLabel} undo: restored from ${formatDateForInput(move.newDueDate)} to ${formatDateForInput(move.oldDueDate)}; restored ${move.shiftedTaskChanges.length} linked task${move.shiftedTaskChanges.length === 1 ? "" : "s"}`,
+      },
+    ]);
+
+    if (activityError) {
+      console.error("Failed to record milestone undo:", activityError);
+    }
+
+    dismissUndoMilestoneMove();
+    setUndoingMilestoneMove(false);
+    await refreshData();
+    showSuccess("Milestone move undone");
+  }
+
+  function cancelMilestoneMove() {
+    if (movingMilestone) return;
+    setPendingMilestoneMove(null);
   }
 
   function jumpToProject(projectId, taskId = null, milestoneId = null) {
@@ -3764,6 +4256,7 @@ function App() {
           highlightedTaskId={highlightedTaskId}
           highlightedMilestoneId={highlightedMilestoneId}
           onDataChanged={refreshData}
+          onSuccess={showSuccess}
         />
       );
     }
@@ -3784,6 +4277,7 @@ function App() {
         teamMembers={teamMembers}
         onJumpToProject={jumpToProject}
         onDataChanged={refreshData}
+        onSuccess={showSuccess}
       />
     );
   }, [activeTab, toggles, events, projects, teamMembers, activityLogs, loadingProjects]);
@@ -3841,6 +4335,120 @@ function App() {
         onManage={manageSelectedProject}
         onJumpToProject={jumpToProject}
       />
+
+      {pendingMilestoneMove && (
+        <div className="modal-backdrop" onClick={cancelMilestoneMove}>
+          <section
+            className="confirm-modal milestone-move-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="confirm-modal-header">
+              <div>
+                <h2>Move milestone?</h2>
+                <p>{pendingMilestoneMove.calendarEvent.label || pendingMilestoneMove.milestone?.label || "Milestone"}</p>
+              </div>
+              <button type="button" onClick={cancelMilestoneMove} disabled={movingMilestone}>
+                Close
+              </button>
+            </div>
+
+            <div className="milestone-move-summary">
+              <div className="move-date-card">
+                <span>From</span>
+                <strong>{formatDateForInput(pendingMilestoneMove.oldDueDate)}</strong>
+              </div>
+              <div className="move-arrow">→</div>
+              <div className="move-date-card move-date-card-new">
+                <span>To</span>
+                <strong>{formatDateForInput(pendingMilestoneMove.newDueDate)}</strong>
+              </div>
+            </div>
+
+            <div className={`shift-preview-card ${pendingMilestoneMove.shiftDays > 0 ? "shift-positive" : "shift-negative"}`}>
+              <strong>
+                {pendingMilestoneMove.shiftDays > 0 ? "+" : ""}
+                {pendingMilestoneMove.shiftDays} day{Math.abs(pendingMilestoneMove.shiftDays) === 1 ? "" : "s"}
+              </strong>
+              <span>
+                This will shift {pendingMilestoneMove.linkedTasksToShift.length} linked incomplete dated task
+                {pendingMilestoneMove.linkedTasksToShift.length === 1 ? "" : "s"}.
+              </span>
+            </div>
+
+            {pendingMilestoneMove.linkedTasksToShift.length > 0 && (
+              <div className="shift-task-preview-list">
+                {pendingMilestoneMove.linkedTasksToShift.slice(0, 6).map((task) => {
+                  const shiftedDate = parseDateOnly(task.due_date);
+                  shiftedDate.setDate(shiftedDate.getDate() + pendingMilestoneMove.shiftDays);
+                  const shiftedDueDate = shiftedDate.toISOString().slice(0, 10);
+
+                  return (
+                    <div className="shift-task-preview-row" key={task.id}>
+                      <span>{task.label}</span>
+                      <em>
+                        {formatDateForInput(task.due_date)} → {formatDateForInput(shiftedDueDate)}
+                      </em>
+                    </div>
+                  );
+                })}
+
+                {pendingMilestoneMove.linkedTasksToShift.length > 6 && (
+                  <div className="shift-task-preview-more">
+                    +{pendingMilestoneMove.linkedTasksToShift.length - 6} more task
+                    {pendingMilestoneMove.linkedTasksToShift.length - 6 === 1 ? "" : "s"}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="confirm-modal-actions">
+              <button type="button" onClick={cancelMilestoneMove} disabled={movingMilestone}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="primary-button"
+                onClick={confirmMilestoneMove}
+                disabled={movingMilestone}
+              >
+                {movingMilestone ? "Moving..." : "Move Milestone"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {undoMilestoneMove && (
+        <div className="undo-flash" role="status" aria-live="polite">
+          <div>
+            <strong>Milestone moved</strong>
+            <span>
+              {formatDateForInput(undoMilestoneMove.oldDueDate)} → {formatDateForInput(undoMilestoneMove.newDueDate)} · {undoMilestoneMove.shiftedTaskChanges.length} task{undoMilestoneMove.shiftedTaskChanges.length === 1 ? "" : "s"} shifted
+            </span>
+          </div>
+
+          <button type="button" onClick={undoLastMilestoneMove} disabled={undoingMilestoneMove}>
+            {undoingMilestoneMove ? "Undoing..." : "Undo"}
+          </button>
+
+          <button
+            type="button"
+            className="undo-flash-dismiss"
+            onClick={dismissUndoMilestoneMove}
+            disabled={undoingMilestoneMove}
+            aria-label="Dismiss undo option"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      {successMessage && (
+        <div className="success-flash" role="status" aria-live="polite">
+          <span>✓</span>
+          {successMessage}
+        </div>
+      )}
 
       <nav className="bottom-nav">
         <button

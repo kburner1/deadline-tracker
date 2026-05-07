@@ -3485,3 +3485,1178 @@ body {
     border-radius: 18px;
   }
 }
+
+/* ===== Confirmation modal for calendar milestone drag/drop ===== */
+.confirm-modal {
+  width: min(560px, calc(100vw - 32px));
+  background: #ffffff;
+  border: 1px solid var(--border-soft);
+  border-radius: 22px;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
+  padding: 18px;
+}
+
+.confirm-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.confirm-modal-header h2 {
+  margin: 0;
+  letter-spacing: -0.03em;
+}
+
+.confirm-modal-header p {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-weight: 800;
+}
+
+.milestone-move-summary {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.move-date-card {
+  border: 1px solid var(--border-soft);
+  border-radius: 16px;
+  background: var(--surface-soft);
+  padding: 12px;
+}
+
+.move-date-card span {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 4px;
+}
+
+.move-date-card strong {
+  font-size: 1.15rem;
+}
+
+.move-date-card-new {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.move-arrow {
+  color: var(--text-muted);
+  font-size: 1.35rem;
+  font-weight: 950;
+}
+
+.shift-preview-card {
+  display: grid;
+  gap: 4px;
+  border-radius: 16px;
+  padding: 12px;
+  margin-bottom: 14px;
+  border: 1px solid var(--border-soft);
+  background: var(--surface-soft);
+}
+
+.shift-preview-card strong {
+  font-size: 1.25rem;
+}
+
+.shift-preview-card span {
+  color: var(--text-muted);
+  font-weight: 800;
+}
+
+.shift-positive {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.shift-positive strong {
+  color: #166534;
+}
+
+.shift-negative {
+  border-color: #fed7aa;
+  background: #fff7ed;
+}
+
+.shift-negative strong {
+  color: #9a3412;
+}
+
+.shift-task-preview-list {
+  display: grid;
+  gap: 7px;
+  max-height: 250px;
+  overflow: auto;
+  padding-right: 2px;
+  margin-bottom: 16px;
+}
+
+.shift-task-preview-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid var(--border-soft);
+  border-radius: 13px;
+  background: #ffffff;
+  padding: 9px 10px;
+}
+
+.shift-task-preview-row span {
+  min-width: 0;
+  font-weight: 850;
+  overflow-wrap: anywhere;
+}
+
+.shift-task-preview-row em {
+  color: var(--text-muted);
+  font-style: normal;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.shift-task-preview-more {
+  color: var(--text-muted);
+  font-weight: 850;
+  text-align: center;
+  padding: 4px 0;
+}
+
+.confirm-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+  .milestone-move-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .move-arrow {
+    text-align: center;
+    transform: rotate(90deg);
+  }
+
+  .shift-task-preview-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+/* ===== Undo milestone move toast ===== */
+.undo-flash {
+  position: fixed;
+  right: 20px;
+  bottom: 138px;
+  z-index: 82;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  width: min(560px, calc(100vw - 32px));
+  padding: 13px 14px;
+  border-radius: 20px;
+  background: #ffffff;
+  color: var(--text);
+  border: 1px solid #bfdbfe;
+  box-shadow: 0 20px 56px rgba(15, 23, 42, 0.26);
+  animation: successFlashIn 0.18s ease-out;
+}
+
+.undo-flash strong {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 950;
+  color: #0f172a;
+}
+
+.undo-flash span {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.undo-flash button {
+  white-space: nowrap;
+}
+
+.undo-flash > button:not(.undo-flash-dismiss) {
+  border: 0;
+  background: #1d4ed8;
+  color: white;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-weight: 950;
+}
+
+.undo-flash > button:not(.undo-flash-dismiss):hover {
+  background: #1e40af;
+  color: white;
+}
+
+.undo-flash-dismiss {
+  width: 32px;
+  height: 32px;
+  padding: 0 !important;
+  border-radius: 999px;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+@media (max-width: 720px) {
+  .undo-flash {
+    right: 12px;
+    left: 12px;
+    bottom: 140px;
+    width: auto;
+    grid-template-columns: 1fr;
+    justify-items: stretch;
+  }
+
+  .undo-flash button {
+    width: 100%;
+  }
+
+  .undo-flash-dismiss {
+    width: 100% !important;
+  }
+}
+
+/* ===== Safer delete confirmation modal ===== */
+.delete-confirm-modal {
+  width: min(500px, calc(100vw - 32px));
+}
+
+.delete-warning-card {
+  display: grid;
+  gap: 4px;
+  border: 1px solid #fecaca;
+  background: #fff1f1;
+  color: #7f1d1d;
+  border-radius: 16px;
+  padding: 12px;
+  margin-bottom: 16px;
+}
+
+.delete-warning-card strong {
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.delete-warning-card span {
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.delete-confirm-button {
+  font-weight: 950 !important;
+  padding-inline: 14px !important;
+}
+
+/* ===== Archive tasks + hidden activity cleanup ===== */
+.activity-collapsible {
+  margin-top: 14px;
+  border: 1px solid var(--border-soft);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+  overflow: hidden;
+}
+
+.activity-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  padding: 10px 12px;
+  color: var(--text-muted);
+  font-weight: 900;
+  list-style: none;
+}
+
+.activity-summary::-webkit-details-marker {
+  display: none;
+}
+
+.activity-summary::before {
+  content: "▶";
+  font-size: 0.72rem;
+  color: var(--text-soft);
+}
+
+.activity-collapsible[open] .activity-summary::before {
+  content: "▼";
+}
+
+.activity-summary span {
+  margin-right: auto;
+}
+
+.activity-summary em {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 24px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #334155;
+  font-style: normal;
+  font-size: 0.78rem;
+}
+
+.activity-collapsible .activity-panel {
+  border: 0;
+  border-top: 1px solid var(--border-soft);
+  border-radius: 0;
+  box-shadow: none;
+  margin: 0;
+  background: #fff;
+}
+
+.task-archived {
+  opacity: 0.58;
+  background: #f8fafc !important;
+  border-style: dashed !important;
+}
+
+.task-archived label span::after {
+  content: " Archived";
+  display: inline-flex;
+  margin-left: 8px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #e5e7eb;
+  color: #475569;
+  font-size: 0.7rem;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+
+/* ===== Archive/activity cleanup v3 ===== */
+.project-card-menu-panel {
+  min-width: 220px;
+}
+
+.project-menu-divider {
+  height: 1px;
+  background: var(--border-soft, #e5e7eb);
+  margin: 6px 0;
+}
+
+.activity-collapsible-compact {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+}
+
+.activity-collapsible-compact .activity-summary {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  border-radius: 10px;
+  padding: 7px 10px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.activity-collapsible-compact .activity-summary:hover {
+  background: var(--surface-soft, #f8fafc);
+}
+
+.activity-collapsible-compact .activity-panel {
+  margin-top: 6px;
+  max-height: 240px;
+  overflow: auto;
+  box-shadow: none;
+  border-radius: 12px;
+}
+
+.activity-collapsible-compact .activity-list {
+  gap: 6px;
+}
+
+.activity-collapsible-compact .activity-row {
+  padding: 7px 8px;
+  font-size: 0.78rem;
+}
+
+
+/* ===== Quick add task rows ===== */
+.quick-task-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  border: 1px dashed var(--border, #d9e0e8);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.quick-task-row input {
+  width: 100%;
+  border: 1px solid var(--border, #d9e0e8);
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-weight: 750;
+  background: #ffffff;
+  color: var(--text, #172033);
+}
+
+.quick-task-row input:focus {
+  outline: none;
+  border-color: #8fb5ff;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.quick-task-row button {
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .quick-task-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ===== Keyboard shortcut polish ===== */
+.project-search-label input:focus {
+  outline: none;
+}
+
+.shortcut-hint {
+  color: var(--text-soft, #8a97a8);
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+
+/* ===== Phase 3 polish: smoother motion + cleaner highlight fade ===== */
+:root {
+  --motion-fast: 140ms;
+  --motion-med: 220ms;
+  --motion-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* General soften */
+.card,
+.project-card,
+.building-task-card,
+.milestone-row,
+.task-row,
+.subtask-row,
+.deadline-row,
+.my-task-row,
+.attention-panel,
+.compact-menu-panel,
+.task-actions-menu-panel {
+  transition:
+    background-color var(--motion-med) var(--motion-ease),
+    border-color var(--motion-med) var(--motion-ease),
+    box-shadow var(--motion-med) var(--motion-ease),
+    transform var(--motion-fast) var(--motion-ease),
+    opacity var(--motion-med) var(--motion-ease);
+}
+
+.project-card-stacked:hover,
+.building-task-card:hover,
+.task-row:hover,
+.milestone-row:hover,
+.deadline-row:hover,
+.my-task-row:hover {
+  transform: translateY(-1px);
+}
+
+/* Menus animate in */
+details[open] > .compact-menu-panel,
+details[open] > .task-actions-menu-panel,
+details[open] > .menu-dropdown {
+  animation: menuFadeIn var(--motion-fast) var(--motion-ease);
+  transform-origin: top right;
+}
+
+@keyframes menuFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Inline forms animate in */
+.inline-form,
+.task-form,
+.subtask-form,
+.subtask-edit-form,
+.project-create-form,
+.building-create-form,
+.building-edit-form,
+.team-manager-panel,
+.bulk-action-bar {
+  animation: formSlideIn var(--motion-med) var(--motion-ease);
+}
+
+@keyframes formSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Subtasks and activity lists feel less abrupt */
+.subtask-list,
+.activity-list,
+.deadline-list,
+.task-list,
+.building-chip-list {
+  transition: opacity var(--motion-med) var(--motion-ease);
+}
+
+.subtask-row {
+  animation: rowFadeIn var(--motion-med) var(--motion-ease);
+}
+
+@keyframes rowFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Highlight target after calendar/project jump */
+.task-highlight,
+.milestone-highlight,
+.highlighted-task,
+.highlighted-milestone {
+  animation: targetPulseFade 2.4s var(--motion-ease);
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18), 0 10px 24px rgba(37, 99, 235, 0.10) !important;
+  background: #eff6ff !important;
+}
+
+@keyframes targetPulseFade {
+  0% {
+    background: #dbeafe;
+    box-shadow: 0 0 0 5px rgba(37, 99, 235, 0.24), 0 14px 30px rgba(37, 99, 235, 0.14);
+  }
+  40% {
+    background: #eff6ff;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18), 0 10px 24px rgba(37, 99, 235, 0.10);
+  }
+  100% {
+    background: inherit;
+    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0);
+  }
+}
+
+/* Project detail panels cannot fully animate if React removes them,
+   but this makes open state feel less harsh without touching JSX. */
+.project-detail-panel:not(.collapsed) {
+  animation: panelOpen var(--motion-med) var(--motion-ease);
+}
+
+@keyframes panelOpen {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Disclosure arrows feel intentional */
+.disclosure-button,
+.attention-disclosure-arrow,
+summary {
+  transition:
+    background-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease),
+    transform var(--motion-fast) var(--motion-ease);
+}
+
+.disclosure-button:hover {
+  transform: scale(1.06);
+}
+
+/* Toasts and modals */
+.success-toast,
+.undo-toast,
+.confirm-modal,
+.project-modal,
+.modal-backdrop {
+  animation: softAppear var(--motion-med) var(--motion-ease);
+}
+
+@keyframes softAppear {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Calendar drag polish */
+.calendar-cell {
+  transition:
+    background-color var(--motion-med) var(--motion-ease),
+    border-color var(--motion-med) var(--motion-ease),
+    box-shadow var(--motion-med) var(--motion-ease);
+}
+
+.calendar-cell:hover {
+  border-color: #b9c9e4;
+  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.08);
+}
+
+.event[draggable="true"] {
+  cursor: grab;
+  transition:
+    transform var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion-fast) var(--motion-ease),
+    filter var(--motion-fast) var(--motion-ease);
+}
+
+.event[draggable="true"]:active {
+  cursor: grabbing;
+  transform: scale(0.98);
+  filter: brightness(0.96);
+}
+
+/* Buttons: cleaner active feel */
+button:active,
+.primary-button:active,
+.danger-button:active {
+  transform: translateY(1px);
+}
+
+/* Keep menus visually consistent */
+.compact-menu-panel button,
+.task-actions-menu-panel button {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.compact-menu summary,
+.task-actions-menu summary {
+  user-select: none;
+}
+
+
+/* ===== Phase 3 polish: button/menu consistency ===== */
+
+/* Standard menu containers */
+.compact-menu,
+.task-actions-menu {
+  position: relative;
+}
+
+.compact-menu summary,
+.task-actions-menu summary {
+  min-width: 34px;
+  min-height: 34px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--border, #d9e0e8);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #263449;
+  font-weight: 950;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.compact-menu summary:hover,
+.task-actions-menu summary:hover {
+  background: var(--surface-soft, #f8fafc);
+  border-color: #b9c4d2;
+}
+
+.compact-menu[open] summary,
+.task-actions-menu[open] summary {
+  background: #111827;
+  border-color: #111827;
+  color: #ffffff;
+}
+
+/* Standard dropdown panels */
+.compact-menu-panel,
+.task-actions-menu-panel,
+.menu-dropdown {
+  min-width: 190px;
+  border: 1px solid var(--border, #d9e0e8);
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.16);
+  padding: 8px;
+  z-index: 50;
+}
+
+.compact-menu-panel,
+.task-actions-menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+}
+
+.task-actions-menu-panel {
+  min-width: 170px;
+}
+
+.project-card-menu-panel {
+  min-width: 230px;
+}
+
+/* Standard menu buttons */
+.compact-menu-panel button,
+.task-actions-menu-panel button,
+.menu-dropdown button {
+  width: 100%;
+  border: 0 !important;
+  border-radius: 10px !important;
+  background: transparent !important;
+  color: #263449 !important;
+  box-shadow: none !important;
+  padding: 9px 10px !important;
+  justify-content: flex-start !important;
+  text-align: left;
+  font-size: 0.84rem;
+  font-weight: 850;
+}
+
+.compact-menu-panel button:hover,
+.task-actions-menu-panel button:hover,
+.menu-dropdown button:hover {
+  background: var(--surface-soft, #f8fafc) !important;
+}
+
+/* Destructive actions are consistent and obvious */
+.compact-menu-panel .danger-button,
+.task-actions-menu-panel .danger-button,
+.menu-dropdown .danger-button {
+  color: var(--red, #b42318) !important;
+}
+
+.compact-menu-panel .danger-button:hover,
+.task-actions-menu-panel .danger-button:hover,
+.menu-dropdown .danger-button:hover {
+  background: var(--red-soft, #fff1f1) !important;
+}
+
+/* Primary action inside a menu should not look like a giant pill */
+.compact-menu-panel .primary-button,
+.task-actions-menu-panel .primary-button,
+.menu-dropdown .primary-button {
+  background: #111827 !important;
+  color: #ffffff !important;
+}
+
+.compact-menu-panel .primary-button:hover,
+.task-actions-menu-panel .primary-button:hover,
+.menu-dropdown .primary-button:hover {
+  background: #0b1220 !important;
+}
+
+/* Dividers */
+.project-menu-divider,
+.menu-divider {
+  height: 1px;
+  width: 100%;
+  background: var(--border-soft, #e7ecf2);
+  margin: 6px 0;
+}
+
+/* Make regular visible action buttons feel related */
+.project-action-button,
+.row-actions button,
+.task-meta > button,
+.form-actions button,
+.calendar-controls button,
+.team-member-bar button {
+  min-height: 34px;
+}
+
+/* Keep small project header from becoming button soup */
+.project-actions-compact {
+  align-items: center;
+  gap: 8px;
+}
+
+/* Status select stands apart from action menu */
+.project-actions-compact .status-select {
+  min-height: 34px;
+  font-weight: 900;
+}
+
+/* Task action menu aligns at far right without stretching task rows */
+.task-actions-menu {
+  display: inline-flex;
+  align-items: center;
+}
+
+.task-actions-menu summary {
+  min-width: 30px;
+  min-height: 30px;
+  font-size: 1rem;
+}
+
+/* Building/project menus should not get clipped inside cards */
+.project-card,
+.building-task-card,
+.task-row,
+.milestone-row {
+  overflow: visible;
+}
+
+/* Modal buttons consistent */
+.confirm-modal .form-actions,
+.modal-actions,
+.delete-confirm-actions {
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.confirm-modal .danger-button,
+.delete-confirm-modal .danger-button {
+  background: var(--red, #b42318) !important;
+  color: #ffffff !important;
+  border-color: var(--red, #b42318) !important;
+}
+
+.confirm-modal .danger-button:hover,
+.delete-confirm-modal .danger-button:hover {
+  filter: brightness(0.96);
+}
+
+/* Cleaner disabled buttons */
+button:disabled,
+button[disabled] {
+  filter: grayscale(0.2);
+  opacity: 0.55;
+}
+
+/* Slightly more consistent inputs beside buttons */
+input,
+select,
+textarea {
+  transition:
+    border-color var(--motion-fast, 140ms) var(--motion-ease, ease),
+    box-shadow var(--motion-fast, 140ms) var(--motion-ease, ease),
+    background-color var(--motion-fast, 140ms) var(--motion-ease, ease);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: #8fb5ff;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+/* Do not over-style checkboxes */
+input[type="checkbox"]:focus {
+  box-shadow: none;
+}
+
+
+/* ===== Project tools / team / collapsible header cleanup ===== */
+
+/* Make tool summaries compact inline rows instead of stacked accordion headers */
+.project-tools-menu > summary,
+.team-menu > summary,
+.activity-collapsible > summary,
+.attention-panel-toggle,
+details.compact-menu > summary,
+details.task-actions-menu > summary {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 7px !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+}
+
+/* The larger top-control menus should look like buttons, not tall accordions */
+.project-tools-menu > summary,
+.team-menu > summary {
+  min-height: 34px !important;
+  height: 34px !important;
+  padding: 7px 12px !important;
+  border: 1px solid var(--border, #d9e0e8) !important;
+  border-radius: 999px !important;
+  background: #ffffff !important;
+  color: #263449 !important;
+  font-size: 0.82rem !important;
+  font-weight: 900 !important;
+  box-shadow: none !important;
+}
+
+/* Put the default disclosure marker beside text, not underneath */
+.project-tools-menu > summary::marker,
+.team-menu > summary::marker,
+.activity-collapsible > summary::marker {
+  font-size: 0.75rem;
+}
+
+/* WebKit marker cleanup */
+.project-tools-menu > summary::-webkit-details-marker,
+.team-menu > summary::-webkit-details-marker,
+.activity-collapsible > summary::-webkit-details-marker {
+  display: inline-block;
+  margin-right: 4px;
+}
+
+/* Hover/open state consistency */
+.project-tools-menu > summary:hover,
+.team-menu > summary:hover {
+  background: var(--surface-soft, #f8fafc) !important;
+  border-color: #b9c4d2 !important;
+}
+
+.project-tools-menu[open] > summary,
+.team-menu[open] > summary {
+  background: #111827 !important;
+  border-color: #111827 !important;
+  color: #ffffff !important;
+}
+
+/* Keep these menus from taking over the whole controls row */
+.project-top-controls {
+  align-items: center !important;
+}
+
+.project-tools-menu,
+.team-menu {
+  display: inline-flex;
+  align-items: center;
+  position: relative;
+}
+
+/* Their dropdown panels should open like menus and not stretch the row */
+.project-tools-menu > .compact-menu-panel,
+.team-menu > .compact-menu-panel {
+  position: absolute !important;
+  right: 0 !important;
+  top: calc(100% + 8px) !important;
+  width: min(520px, calc(100vw - 32px));
+  max-width: 520px;
+  z-index: 80;
+}
+
+/* Team menu is narrower */
+.team-menu > .compact-menu-panel {
+  width: min(420px, calc(100vw - 32px));
+}
+
+/* Project tools internal layout: tighter and cleaner */
+.project-tools-menu .project-filter-bar,
+.project-tools-menu .compact-menu-panel {
+  align-items: stretch;
+}
+
+.project-tools-section {
+  display: grid;
+  gap: 8px;
+}
+
+.project-tools-section-title {
+  display: block;
+  color: var(--text-muted, #66758a);
+  font-size: 0.72rem;
+  font-weight: 950;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-top: 3px;
+}
+
+.project-tool-row {
+  display: grid !important;
+  grid-template-columns: minmax(120px, 1fr) auto;
+  align-items: center !important;
+  gap: 12px !important;
+  width: 100%;
+  min-height: 30px;
+  margin: 0 !important;
+}
+
+.project-tool-row span {
+  color: #334155;
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.project-tool-checkbox-row input[type="checkbox"] {
+  justify-self: end;
+}
+
+.project-tool-select-row select {
+  justify-self: end;
+  max-width: 220px;
+}
+
+/* Team panel rows */
+.team-manager-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.team-member-add-row,
+.team-member-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.team-member-row {
+  justify-content: space-between;
+  border: 1px solid var(--border-soft, #e7ecf2);
+  border-radius: 12px;
+  padding: 8px 10px;
+  background: var(--surface-soft, #f8fafc);
+}
+
+.team-member-row strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Activity summary compactness */
+.activity-collapsible > summary {
+  min-height: 30px !important;
+  padding: 6px 8px !important;
+}
+
+/* Dashboard collapsible headers: arrow/text/count all on one row */
+.attention-panel-toggle {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px !important;
+}
+
+.attention-title-wrap {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 7px !important;
+  min-width: 0;
+}
+
+.attention-title-wrap h3 {
+  line-height: 1.1 !important;
+}
+
+.attention-disclosure-arrow {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-width: 16px !important;
+  height: 16px !important;
+  line-height: 1 !important;
+}
+
+/* Mobile: keep controls compact instead of tall */
+@media (max-width: 720px) {
+  .project-tools-menu > .compact-menu-panel,
+  .team-menu > .compact-menu-panel {
+    right: auto !important;
+    left: 0 !important;
+    width: calc(100vw - 32px);
+  }
+
+  .project-tool-row {
+    grid-template-columns: 1fr;
+    gap: 6px !important;
+  }
+
+  .project-tool-row select,
+  .project-tool-row input {
+    justify-self: start;
+  }
+}
+
+
+/* ===== Fix team menu row blowout ===== */
+.team-menu .team-manager-panel {
+  min-width: 320px;
+}
+
+.team-menu .team-member-list {
+  display: grid;
+  gap: 8px;
+}
+
+.team-menu .team-member-row {
+  display: grid !important;
+  grid-template-columns: minmax(120px, 1fr) auto auto !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.team-menu .team-member-row strong {
+  display: block !important;
+  min-width: 0 !important;
+  max-width: 180px !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  word-break: normal !important;
+  overflow-wrap: normal !important;
+  line-height: 1.15 !important;
+}
+
+.team-menu .team-member-row button {
+  width: auto !important;
+  white-space: nowrap !important;
+  justify-content: center !important;
+}
+
+.team-menu .team-member-row input {
+  min-width: 0 !important;
+  width: 100% !important;
+}
+
