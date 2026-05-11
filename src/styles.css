@@ -1356,32 +1356,6 @@ button:hover,
   box-shadow: 0 30px 80px rgba(15, 23, 42, 0.35);
 }
 
-
-/* Project form modal */
-
-.project-form-modal {
-  width: min(760px, 100%);
-}
-
-.project-create-form-modal {
-  margin-top: 0;
-  background: #ffffff;
-  border-color: var(--border-soft);
-  box-shadow: none;
-}
-
-.project-create-form-modal .form-title-row {
-  margin-bottom: 2px;
-}
-
-.project-form-backdrop .project-create-grid {
-  margin-top: 4px;
-}
-
-.project-form-backdrop .form-actions {
-  justify-content: flex-end;
-}
-
 /* Responsive */
 
 @media (max-width: 1000px) {
@@ -4952,4 +4926,87 @@ details.task-actions-menu > summary {
     content: "";
     margin-right: 0;
   }
+}
+
+/* Fresh download fix: visible General task collapse + task transfer modal */
+.general-task-card .building-task-header {
+  position: relative;
+  z-index: 2;
+}
+
+.general-collapse-button {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.general-collapse-button .building-title-stack {
+  text-align: left;
+}
+
+.general-collapse-button .building-task-count::after {
+  content: " · click to show/hide";
+  color: var(--text-soft);
+  font-weight: 800;
+}
+
+.building-task-card.section-collapsed .quick-task-row,
+.building-task-card.section-collapsed .task-form,
+.building-task-card.section-collapsed .task-list,
+.building-task-card.section-collapsed .subtask-list {
+  display: none;
+}
+
+.task-transfer-modal {
+  width: min(560px, 100%);
+}
+
+.task-transfer-body {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.task-transfer-field {
+  display: grid;
+  gap: 6px;
+  font-weight: 900;
+  color: #334155;
+}
+
+.task-transfer-field select {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 10px 12px;
+  color: var(--text);
+  outline: none;
+  font-weight: 800;
+}
+
+.task-transfer-field select:focus {
+  border-color: #8fb5ff;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.task-transfer-subtasks-option {
+  width: fit-content;
+}
+
+.task-row,
+.subtask-list,
+.subtask-form {
+  position: relative;
+}
+
+.task-row:has(.task-actions-menu[open]),
+.subtask-list:has(.subtask-form) {
+  z-index: 8;
+}
+
+.task-actions-menu[open] {
+  z-index: 20;
+}
+
+.subtask-form {
+  z-index: 7;
 }

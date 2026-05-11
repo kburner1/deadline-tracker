@@ -1026,6 +1026,9 @@ function Projects({
   const [quickTaskValues, setQuickTaskValues] = useState({});
   const [pendingDelete, setPendingDelete] = useState(null);
   const [deletingItem, setDeletingItem] = useState(false);
+  const [pendingTaskTransfer, setPendingTaskTransfer] = useState(null);
+  const [transferringTask, setTransferringTask] = useState(false);
+  const [copyTaskSubtasks, setCopyTaskSubtasks] = useState(true);
   const [editingBuildingId, setEditingBuildingId] = useState(null);
   const [editingBuildingName, setEditingBuildingName] = useState("");
   const [editingMilestoneId, setEditingMilestoneId] = useState(null);
@@ -1047,6 +1050,13 @@ function Projects({
   const [collapsedBuildingSectionProjectIds, setCollapsedBuildingSectionProjectIds] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem("deadlineTrackerCollapsedBuildingSections") || "[]");
+    } catch {
+      return [];
+    }
+  });
+  const [collapsedGeneralTaskProjectIds, setCollapsedGeneralTaskProjectIds] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("deadlineTrackerCollapsedGeneralTaskSections") || "[]");
     } catch {
       return [];
     }
@@ -1096,6 +1106,13 @@ function Projects({
       JSON.stringify(collapsedBuildingSectionProjectIds)
     );
   }, [collapsedBuildingSectionProjectIds]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      "deadlineTrackerCollapsedGeneralTaskSections",
+      JSON.stringify(collapsedGeneralTaskProjectIds)
+    );
+  }, [collapsedGeneralTaskProjectIds]);
 
   useEffect(() => {
     setEditingSubtaskId(null);
@@ -1176,6 +1193,9 @@ function Projects({
         current.filter((id) => id !== projectIdToExpand)
       );
       setCollapsedBuildingSectionProjectIds((current) =>
+        current.filter((id) => id !== projectIdToExpand)
+      );
+      setCollapsedGeneralTaskProjectIds((current) =>
         current.filter((id) => id !== projectIdToExpand)
       );
     }
@@ -1939,6 +1959,133 @@ function Projects({
     });
   }
 
+  function getProjectForTask(task) {
+    return projects.find((project) => project.id === task.project_id) || null;
+  }
+
+  function getSubtasksForTask(task) {
+    const project = getProjectForTask(task);
+    if (!project) return [];
+
+    return [
+      ...(project.tasks || []),
+      ...(project.buildings || []).flatMap((building) => building.tasks || []),
+    ].filter((candidate) => candidate.parent_task_id === task.id);
+  }
+
+  function openTaskTransfer(task, mode) {
+    const project = getProjectForTask(task);
+    if (!project || task.parent_task_id) return;
+
+    setPendingTaskTransfer({
+      task,
+      mode,
+      destinationBuildingId: task.building_id || "__general__",
+    });
+    setCopyTaskSubtasks(true);
+  }
+
+  function cancelTaskTransfer() {
+    if (transferringTask) return;
+    setPendingTaskTransfer(null);
+    setCopyTaskSubtasks(true);
+  }
+
+  function updatePendingTaskTransferDestination(destinationBuildingId) {
+    setPendingTaskTransfer((current) =>
+      current ? { ...current, destinationBuildingId } : current
+    );
+  }
+
+  async function confirmTaskTransfer() {
+    if (!pendingTaskTransfer || transferringTask) return;
+
+    const { task, mode, destinationBuildingId } = pendingTaskTransfer;
+    const destination = destinationBuildingId === "__general__" ? null : destinationBuildingId;
+    const subtasks = getSubtasksForTask(task);
+
+    setTransferringTask(true);
+
+    try {
+      if (mode === "move") {
+        const taskIdsToMove = [task.id, ...subtasks.map((subtask) => subtask.id)];
+        const { error } = await supabase
+          .from("tasks")
+          .update({ building_id: destination })
+          .in("id", taskIdsToMove);
+
+        if (error) throw error;
+
+        await recordActivity({
+          projectId: task.project_id,
+          taskId: task.id,
+          action: "task_updated",
+          details: `Moved task: ${task.label || "Untitled task"}`,
+        });
+
+        onSuccess("Task moved");
+      } else {
+        const copyPayload = {
+          project_id: task.project_id,
+          building_id: destination,
+          milestone_id: task.milestone_id || null,
+          assigned_to: task.assigned_to || null,
+          label: task.label || "Untitled task",
+          due_date: task.due_date || null,
+          notes: task.notes || null,
+          parent_task_id: null,
+          is_complete: false,
+          is_archived: false,
+          is_waiting: false,
+          waiting_since: null,
+        };
+
+        const { data: copiedTask, error: copyError } = await supabase
+          .from("tasks")
+          .insert([copyPayload])
+          .select()
+          .single();
+
+        if (copyError) throw copyError;
+
+        if (copyTaskSubtasks && copiedTask && subtasks.length > 0) {
+          const copiedSubtasks = subtasks.map((subtask) => ({
+            project_id: task.project_id,
+            building_id: destination,
+            parent_task_id: copiedTask.id,
+            label: subtask.label || "Untitled subtask",
+            is_complete: false,
+            is_archived: false,
+          }));
+
+          const { error: subtaskCopyError } = await supabase
+            .from("tasks")
+            .insert(copiedSubtasks);
+
+          if (subtaskCopyError) throw subtaskCopyError;
+        }
+
+        await recordActivity({
+          projectId: task.project_id,
+          taskId: copiedTask?.id || task.id,
+          action: "task_updated",
+          details: `Copied task: ${task.label || "Untitled task"}`,
+        });
+
+        onSuccess("Task copied");
+      }
+
+      setPendingTaskTransfer(null);
+      setCopyTaskSubtasks(true);
+      await onDataChanged();
+    } catch (error) {
+      console.error(`Failed to ${mode} task:`, error);
+      alert(`Failed to ${mode} task`);
+    } finally {
+      setTransferringTask(false);
+    }
+  }
+
   function toggleProjectCollapsed(projectId) {
     setCollapsedProjectIds((current) =>
       current.includes(projectId)
@@ -2183,6 +2330,14 @@ function Projects({
       current.includes(buildingId)
         ? current.filter((id) => id !== buildingId)
         : [...current, buildingId]
+    );
+  }
+
+  function toggleGeneralTaskSectionCollapsed(projectId) {
+    setCollapsedGeneralTaskProjectIds((current) =>
+      current.includes(projectId)
+        ? current.filter((id) => id !== projectId)
+        : [...current, projectId]
     );
   }
 
@@ -2562,17 +2717,12 @@ function Projects({
 
 
       {showProjectForm && (
-        <div className="modal-backdrop project-form-backdrop" onClick={cancelNewProject}>
-          <section
-            className="project-modal project-form-modal"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="project-create-form project-create-form-modal">
-              <div className="form-title-row">
-                <strong>{editingProjectId ? "Edit Project" : "New Project"}</strong>
-                <span>{editingProjectId ? "Update the project details below." : "Add the project details below."}</span>
-              </div>
-              <div className="project-create-grid">
+        <div className="project-create-form">
+          <div className="form-title-row">
+            <strong>{editingProjectId ? "Edit Project" : "New Project"}</strong>
+            <span>{editingProjectId ? "Update the project details below." : "Add the project details below."}</span>
+          </div>
+          <div className="project-create-grid">
             <label>
               Project title
               <input
@@ -2627,16 +2777,14 @@ function Projects({
             </label>
           </div>
 
-              <div className="form-actions">
-                <button type="button" className="primary-button" onClick={saveNewProject}>
-                  {editingProjectId ? "Update Project" : "Save Project"}
-                </button>
-                <button type="button" onClick={cancelNewProject}>
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </section>
+          <div className="form-actions">
+            <button type="button" className="primary-button" onClick={saveNewProject}>
+              {editingProjectId ? "Update Project" : "Save Project"}
+            </button>
+            <button type="button" onClick={cancelNewProject}>
+              Cancel
+            </button>
+          </div>
         </div>
       )}
 
@@ -3141,19 +3289,31 @@ function Projects({
                       (task) => task.is_complete
                     ).length;
                     const generalScopeId = `general-${project.id}`;
+                    const isGeneralCollapsed = collapsedGeneralTaskProjectIds.includes(project.id);
 
                     return (
-                      <div className="building-task-card general-task-card">
+                      <div className={`building-task-card general-task-card ${isGeneralCollapsed ? "section-collapsed" : ""}`}>
                         <div className="building-task-header">
-                          <div>
-                            <strong>General</strong>
-                            <span>
-                              Project-wide tasks · {generalTasks.length} task
-                              {generalTasks.length === 1 ? "" : "s"}
-                              {generalTasks.length > 0 &&
-                                ` (${completedGeneralTaskCount} done)`}
+                          <button
+                            type="button"
+                            className="building-collapse-header building-collapse-grid general-collapse-button"
+                            onClick={() => toggleGeneralTaskSectionCollapsed(project.id)}
+                            aria-expanded={!isGeneralCollapsed}
+                            title={isGeneralCollapsed ? "Show General tasks" : "Hide General tasks"}
+                          >
+                            <span className="building-disclosure-cell">
+                              {isGeneralCollapsed ? "▶" : "▼"}
                             </span>
-                          </div>
+                            <span className="building-title-stack">
+                              <strong className="building-section-title">General</strong>
+                              <span className="building-task-count">
+                                Project-wide tasks · {generalTasks.length} task
+                                {generalTasks.length === 1 ? "" : "s"}
+                                {generalTasks.length > 0 &&
+                                  ` (${completedGeneralTaskCount} done)`}
+                              </span>
+                            </span>
+                          </button>
 
                           <div className="row-actions">
                             <button
@@ -3165,7 +3325,7 @@ function Projects({
                           </div>
                         </div>
 
-                        {taskBuildingId === generalScopeId && (
+                        {!isGeneralCollapsed && taskBuildingId === generalScopeId && (
                           <div className="task-form task-form-clean">
                             <div className="task-form-row">
                               <label className="task-form-field task-form-title-field">
@@ -3253,7 +3413,8 @@ function Projects({
                           </div>
                         )}
 
-                        <div className="quick-task-row">
+                        {!isGeneralCollapsed && (
+                          <div className="quick-task-row">
                           <input
                             value={quickTaskValues[generalScopeId] || ""}
                             onChange={(event) => updateQuickTaskValue(generalScopeId, event.target.value)}
@@ -3279,8 +3440,9 @@ function Projects({
                             Add
                           </button>
                         </div>
+                        )}
 
-                        {generalTasks.length > 0 && (
+                        {!isGeneralCollapsed && generalTasks.length > 0 && (
                           <div className="task-list">
                             {generalTasks.filter((task) => !task.parent_task_id).map((task) => (
                               <React.Fragment key={task.id}>
@@ -3372,6 +3534,8 @@ function Projects({
                                     <div className="task-actions-menu-panel">
                                       <button type="button" onClick={() => openSubtaskForm(task.id)}>+ Subtask</button>
                                       <button type="button" onClick={() => openEditTaskForm(generalScopeId, task)}>Edit</button>
+                                      <button type="button" onClick={() => openTaskTransfer(task, "move")}>Move</button>
+                                      <button type="button" onClick={() => openTaskTransfer(task, "copy")}>Copy</button>
                                       <button type="button" onClick={() => toggleTaskWaiting(task)}>{task.is_waiting ? "Clear Waiting" : "Waiting"}</button>
                                       <button type="button" className={task.is_archived ? "" : "danger-button"} onClick={() => toggleTaskArchive(task)}>{task.is_archived ? "Unarchive" : "Archive"}</button>
                                     </div>
@@ -3778,6 +3942,8 @@ function Projects({
                                       <div className="task-actions-menu-panel">
                                         <button type="button" onClick={() => openSubtaskForm(task.id)}>+ Subtask</button>
                                         <button type="button" onClick={() => openEditTaskForm(building.id, task)}>Edit</button>
+                                        <button type="button" onClick={() => openTaskTransfer(task, "move")}>Move</button>
+                                        <button type="button" onClick={() => openTaskTransfer(task, "copy")}>Copy</button>
                                         <button type="button" onClick={() => toggleTaskWaiting(task)}>{task.is_waiting ? "Clear Waiting" : "Waiting"}</button>
                                         <button type="button" className={task.is_archived ? "" : "danger-button"} onClick={() => toggleTaskArchive(task)}>{task.is_archived ? "Unarchive" : "Archive"}</button>
                                       </div>
@@ -3895,6 +4061,83 @@ function Projects({
           );
         })}
       </div>
+
+      {pendingTaskTransfer && (() => {
+        const transferProject = getProjectForTask(pendingTaskTransfer.task);
+        const destinationBuildingId = pendingTaskTransfer.destinationBuildingId || "__general__";
+        const subtaskCount = getSubtasksForTask(pendingTaskTransfer.task).length;
+        const modeLabel = pendingTaskTransfer.mode === "move" ? "Move" : "Copy";
+
+        return (
+          <div className="modal-backdrop" onClick={cancelTaskTransfer}>
+            <section
+              className="confirm-modal task-transfer-modal"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="confirm-modal-header">
+                <div>
+                  <h2>{modeLabel} task</h2>
+                  <p>{pendingTaskTransfer.task.label || "Untitled task"}</p>
+                </div>
+                <button type="button" onClick={cancelTaskTransfer} disabled={transferringTask}>
+                  Close
+                </button>
+              </div>
+
+              <div className="task-transfer-body">
+                <label className="task-transfer-field">
+                  <span>Destination</span>
+                  <select
+                    value={destinationBuildingId}
+                    onChange={(event) => updatePendingTaskTransferDestination(event.target.value)}
+                  >
+                    <option value="__general__">General</option>
+                    {(transferProject?.buildings || []).map((building) => (
+                      <option value={building.id} key={building.id}>
+                        {building.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                {pendingTaskTransfer.mode === "copy" && subtaskCount > 0 && (
+                  <label className="checkbox-row task-transfer-subtasks-option">
+                    <input
+                      type="checkbox"
+                      checked={copyTaskSubtasks}
+                      onChange={(event) => setCopyTaskSubtasks(event.target.checked)}
+                    />
+                    Copy {subtaskCount} subtask{subtaskCount === 1 ? "" : "s"}
+                  </label>
+                )}
+
+                <div className="delete-warning-card">
+                  <strong>{pendingTaskTransfer.mode === "move" ? "Move keeps the task history." : "Copy creates a clean duplicate."}</strong>
+                  <span>
+                    {pendingTaskTransfer.mode === "move"
+                      ? "The task and its subtasks will move together to the selected section."
+                      : "The copied task will start incomplete, active, and not waiting."}
+                  </span>
+                </div>
+              </div>
+
+              <div className="confirm-modal-actions">
+                <button type="button" onClick={cancelTaskTransfer} disabled={transferringTask}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="primary-button delete-confirm-button"
+                  onClick={confirmTaskTransfer}
+                  disabled={transferringTask}
+                >
+                  {transferringTask ? `${modeLabel}ing...` : `${modeLabel} Task`}
+                </button>
+              </div>
+            </section>
+          </div>
+        );
+      })()}
 
       {pendingDelete && (
         <div className="modal-backdrop" onClick={cancelDeleteConfirm}>
