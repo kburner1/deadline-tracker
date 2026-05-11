@@ -1356,6 +1356,32 @@ button:hover,
   box-shadow: 0 30px 80px rgba(15, 23, 42, 0.35);
 }
 
+
+/* Project form modal */
+
+.project-form-modal {
+  width: min(760px, 100%);
+}
+
+.project-create-form-modal {
+  margin-top: 0;
+  background: #ffffff;
+  border-color: var(--border-soft);
+  box-shadow: none;
+}
+
+.project-create-form-modal .form-title-row {
+  margin-bottom: 2px;
+}
+
+.project-form-backdrop .project-create-grid {
+  margin-top: 4px;
+}
+
+.project-form-backdrop .form-actions {
+  justify-content: flex-end;
+}
+
 /* Responsive */
 
 @media (max-width: 1000px) {

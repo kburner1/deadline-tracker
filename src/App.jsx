@@ -2562,12 +2562,17 @@ function Projects({
 
 
       {showProjectForm && (
-        <div className="project-create-form">
-          <div className="form-title-row">
-            <strong>{editingProjectId ? "Edit Project" : "New Project"}</strong>
-            <span>{editingProjectId ? "Update the project details below." : "Add the project details below."}</span>
-          </div>
-          <div className="project-create-grid">
+        <div className="modal-backdrop project-form-backdrop" onClick={cancelNewProject}>
+          <section
+            className="project-modal project-form-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="project-create-form project-create-form-modal">
+              <div className="form-title-row">
+                <strong>{editingProjectId ? "Edit Project" : "New Project"}</strong>
+                <span>{editingProjectId ? "Update the project details below." : "Add the project details below."}</span>
+              </div>
+              <div className="project-create-grid">
             <label>
               Project title
               <input
@@ -2622,14 +2627,16 @@ function Projects({
             </label>
           </div>
 
-          <div className="form-actions">
-            <button type="button" className="primary-button" onClick={saveNewProject}>
-              {editingProjectId ? "Update Project" : "Save Project"}
-            </button>
-            <button type="button" onClick={cancelNewProject}>
-              Cancel
-            </button>
-          </div>
+              <div className="form-actions">
+                <button type="button" className="primary-button" onClick={saveNewProject}>
+                  {editingProjectId ? "Update Project" : "Save Project"}
+                </button>
+                <button type="button" onClick={cancelNewProject}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </section>
         </div>
       )}
 
