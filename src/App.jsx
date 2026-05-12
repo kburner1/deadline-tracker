@@ -81,6 +81,10 @@ function formatTaskDueDate(dateValue) {
   return format(new Date(`${dateValue}T00:00:00`), "EEE, MMM d");
 }
 
+function getMilestoneNote(milestone) {
+  return (milestone?.note || milestone?.notes || "").trim();
+}
+
 function getProjectStatusRank(status) {
   if (status === "Design") return 1;
   if (status === "CA") return 2;
@@ -567,6 +571,7 @@ function CalendarMonth({ events, toggles, onEventClick, onMilestoneDrop }) {
                     <strong>{event.project_title}</strong>
                     {buildings.length > 0 && <span>{buildings.join(", ")}</span>}
                     <span>{event.label}</span>
+                    {getMilestoneNote(event) && <em>{getMilestoneNote(event)}</em>}
                   </button>
                 );
               })}
@@ -972,6 +977,7 @@ function Dashboard({
             const buildings = normalizeBuildings(
               event.buildings || event.building_names
             );
+            const milestoneNoteText = getMilestoneNote(event);
 
             return (
               <div
@@ -985,6 +991,9 @@ function Dashboard({
                     {buildings.length > 0 ? buildings.join(", ") : "General"} ·{" "}
                     {event.label}
                   </span>
+                  {milestoneNoteText && (
+                    <em className="milestone-note dashboard-milestone-note">{milestoneNoteText}</em>
+                  )}
                 </div>
                 <div className="deadline-date">
                   {event.due_date
@@ -1018,6 +1027,7 @@ function Projects({
   const [milestoneProjectId, setMilestoneProjectId] = useState(null);
   const [milestoneLabel, setMilestoneLabel] = useState("");
   const [milestoneDate, setMilestoneDate] = useState("");
+  const [milestoneNote, setMilestoneNote] = useState("");
   const [selectedBuildingIds, setSelectedBuildingIds] = useState([]);
   const [savingMilestone, setSavingMilestone] = useState(false);
   const [buildingProjectId, setBuildingProjectId] = useState(null);
@@ -1042,8 +1052,10 @@ function Projects({
   const [savingTask, setSavingTask] = useState(false);
   const [subtaskParentId, setSubtaskParentId] = useState(null);
   const [subtaskLabel, setSubtaskLabel] = useState("");
+  const [subtaskDueDate, setSubtaskDueDate] = useState("");
   const [editingSubtaskId, setEditingSubtaskId] = useState(null);
   const [editingSubtaskLabel, setEditingSubtaskLabel] = useState("");
+  const [editingSubtaskDueDate, setEditingSubtaskDueDate] = useState("");
   const [collapsedSubtaskParentIds, setCollapsedSubtaskParentIds] = useState([]);
   const [collapsedMilestoneProjectIds, setCollapsedMilestoneProjectIds] = useState([]);
   const [collapsedBuildingIds, setCollapsedBuildingIds] = useState([]);
@@ -1117,6 +1129,7 @@ function Projects({
   useEffect(() => {
     setEditingSubtaskId(null);
     setEditingSubtaskLabel("");
+    setEditingSubtaskDueDate("");
   }, [projects]);
 
   useEffect(() => {
@@ -1520,6 +1533,7 @@ function Projects({
     setEditingMilestoneId(null);
     setMilestoneLabel("");
     setMilestoneDate("");
+    setMilestoneNote("");
     setSelectedBuildingIds([]);
   }
 
@@ -1531,6 +1545,7 @@ function Projects({
     setEditingMilestoneId(milestone.id);
     setMilestoneLabel(milestone.label || "");
     setMilestoneDate(milestone.due_date || "");
+    setMilestoneNote(getMilestoneNote(milestone));
     setSelectedBuildingIds(linkedBuildingIds);
   }
 
@@ -1539,6 +1554,7 @@ function Projects({
     setEditingMilestoneId(null);
     setMilestoneLabel("");
     setMilestoneDate("");
+    setMilestoneNote("");
     setSelectedBuildingIds([]);
   }
 
@@ -1609,6 +1625,8 @@ function Projects({
     );
     const previousDueDate = previousMilestone?.due_date || null;
     const dueDate = parseUserDate(milestoneDate);
+    const note = milestoneNote.trim() || null;
+    let shiftedLinkedTaskCount = 0;
 
     if (!milestoneLabel.trim()) {
       alert("Please enter a milestone name.");
@@ -1629,6 +1647,7 @@ function Projects({
           .update({
             label: milestoneLabel.trim(),
             due_date: dueDate,
+            note,
           })
           .eq("id", editingMilestoneId);
 
@@ -1648,6 +1667,8 @@ function Projects({
               !task.is_complete &&
               !task.parent_task_id
             );
+
+          shiftedLinkedTaskCount = linkedTasksToShift.length;
 
           if (shiftDays !== 0 && linkedTasksToShift.length > 0) {
             const taskUpdates = linkedTasksToShift.map((task) => {
@@ -1684,6 +1705,7 @@ function Projects({
               project_id: projectId,
               label: milestoneLabel.trim(),
               due_date: dueDate,
+              note,
               is_ca_deadline: false,
             },
           ])
@@ -1698,7 +1720,7 @@ function Projects({
       }
 
       const milestoneMessage = editingMilestoneId
-        ? `Milestone updated${previousDueDate && previousDueDate !== dueDate ? `; ${linkedTasksToShift.length} task${linkedTasksToShift.length === 1 ? "" : "s"} shifted` : ""}`
+        ? `Milestone updated${previousDueDate && previousDueDate !== dueDate ? `; ${shiftedLinkedTaskCount} task${shiftedLinkedTaskCount === 1 ? "" : "s"} shifted` : ""}`
         : "Milestone added";
 
       closeMilestoneForm();
@@ -2344,21 +2366,25 @@ function Projects({
   function openSubtaskForm(parentTaskId) {
     setSubtaskParentId(parentTaskId);
     setSubtaskLabel("");
+    setSubtaskDueDate("");
   }
 
   function closeSubtaskForm() {
     setSubtaskParentId(null);
     setSubtaskLabel("");
+    setSubtaskDueDate("");
   }
 
   function openEditSubtaskForm(subtask) {
     setEditingSubtaskId(subtask.id);
     setEditingSubtaskLabel(subtask.label || "");
+    setEditingSubtaskDueDate(subtask.due_date || "");
   }
 
   function closeEditSubtaskForm() {
     setEditingSubtaskId(null);
     setEditingSubtaskLabel("");
+    setEditingSubtaskDueDate("");
   }
 
   async function saveEditedSubtask(subtask) {
@@ -2367,9 +2393,21 @@ function Projects({
       return;
     }
 
+    const normalizedDueDate = editingSubtaskDueDate
+      ? parseUserDate(editingSubtaskDueDate)
+      : null;
+
+    if (editingSubtaskDueDate && !normalizedDueDate) {
+      alert("Please enter a valid subtask due date.");
+      return;
+    }
+
     const { error } = await supabase
       .from("tasks")
-      .update({ label: editingSubtaskLabel.trim() })
+      .update({
+        label: editingSubtaskLabel.trim(),
+        due_date: normalizedDueDate,
+      })
       .eq("id", subtask.id);
 
     if (error) {
@@ -2394,12 +2432,20 @@ function Projects({
       return;
     }
 
+    const normalizedDueDate = subtaskDueDate ? parseUserDate(subtaskDueDate) : null;
+
+    if (subtaskDueDate && !normalizedDueDate) {
+      alert("Please enter a valid subtask due date.");
+      return;
+    }
+
     const { error } = await supabase.from("tasks").insert([
       {
         project_id: parentTask.project_id,
         building_id: parentTask.building_id,
         parent_task_id: parentTask.id,
         label: subtaskLabel.trim(),
+        due_date: normalizedDueDate,
         is_complete: false,
       },
     ]);
@@ -3102,6 +3148,15 @@ function Projects({
                     />
                   </label>
 
+                  <label className="milestone-note-field">
+                    Note / requested time
+                    <input
+                      value={milestoneNote}
+                      onChange={(event) => setMilestoneNote(event.target.value)}
+                      placeholder="Noon, EOD, before meeting, etc."
+                    />
+                  </label>
+
                   <div className="building-picker">
                     <strong>Applies to</strong>
                     {buildings.length === 0 && (
@@ -3181,6 +3236,7 @@ function Projects({
                     milestone.milestone_buildings
                       ?.map((link) => link.buildings?.name)
                       .filter(Boolean) || [];
+                  const milestoneNoteText = getMilestoneNote(milestone);
 
                   return (
                     <div
@@ -3202,6 +3258,9 @@ function Projects({
                             ? linkedBuildings.join(", ")
                             : "General"}
                         </span>
+                        {milestoneNoteText && (
+                          <em className="milestone-note">{milestoneNoteText}</em>
+                        )}
                       </div>
 
                       <div className="row-actions milestone-row-actions">
@@ -3570,6 +3629,14 @@ function Projects({
                                               }}
                                               autoFocus
                                             />
+                                            <input
+                                              type="date"
+                                              value={editingSubtaskDueDate}
+                                              onChange={(event) =>
+                                                setEditingSubtaskDueDate(event.target.value)
+                                              }
+                                              aria-label="Subtask due date"
+                                            />
                                             <button
                                               type="button"
                                               className="primary-button"
@@ -3594,6 +3661,12 @@ function Projects({
                                               />
                                               <span>{subtask.label}</span>
                                             </label>
+
+                                            {subtask.due_date && (
+                                              <span className="task-due-date subtask-due-date">
+                                                Due {format(new Date(`${subtask.due_date}T00:00:00`), "EEE, MMM d")}
+                                              </span>
+                                            )}
 
                                             <div className="subtask-actions">
                                               <button
@@ -3623,6 +3696,14 @@ function Projects({
                                           setSubtaskLabel(event.target.value)
                                         }
                                         placeholder="Add subtask"
+                                      />
+                                      <input
+                                        type="date"
+                                        value={subtaskDueDate}
+                                        onChange={(event) =>
+                                          setSubtaskDueDate(event.target.value)
+                                        }
+                                        aria-label="Subtask due date"
                                       />
                                       <button
                                         type="button"
@@ -3978,6 +4059,14 @@ function Projects({
                                                 }}
                                                 autoFocus
                                               />
+                                              <input
+                                                type="date"
+                                                value={editingSubtaskDueDate}
+                                                onChange={(event) =>
+                                                  setEditingSubtaskDueDate(event.target.value)
+                                                }
+                                                aria-label="Subtask due date"
+                                              />
                                               <button
                                                 type="button"
                                                 className="primary-button"
@@ -4002,6 +4091,12 @@ function Projects({
                                                 />
                                                 <span>{subtask.label}</span>
                                               </label>
+
+                                              {subtask.due_date && (
+                                                <span className="task-due-date subtask-due-date">
+                                                  Due {format(new Date(`${subtask.due_date}T00:00:00`), "EEE, MMM d")}
+                                                </span>
+                                              )}
 
                                               <div className="subtask-actions">
                                                 <button
@@ -4031,6 +4126,14 @@ function Projects({
                                             setSubtaskLabel(event.target.value)
                                           }
                                           placeholder="Add subtask"
+                                        />
+                                        <input
+                                          type="date"
+                                          value={subtaskDueDate}
+                                          onChange={(event) =>
+                                            setSubtaskDueDate(event.target.value)
+                                          }
+                                          aria-label="Subtask due date"
                                         />
                                         <button
                                           type="button"

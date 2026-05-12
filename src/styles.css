@@ -5010,3 +5010,90 @@ details.task-actions-menu > summary {
 .subtask-form {
   z-index: 7;
 }
+
+/* Milestone notes / requested times */
+.milestone-note-field {
+  min-width: min(100%, 260px);
+}
+
+.milestone-note {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 6px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid #dbe5f0;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 0.76rem;
+  font-style: normal;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.dashboard-milestone-note {
+  margin-top: 5px;
+}
+
+.event em {
+  color: inherit;
+  font-size: 0.68rem;
+  font-style: normal;
+  font-weight: 900;
+  opacity: 0.9;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Task menu stacking / subtask due date fixes */
+.task-list,
+.building-task-card,
+.project-detail-panel {
+  overflow: visible;
+}
+
+.task-row,
+.subtask-list,
+.subtask-row,
+.subtask-form,
+.subtask-edit-form {
+  position: relative;
+}
+
+.task-row:hover {
+  z-index: 2;
+}
+
+.task-row:has(.task-actions-menu[open]) {
+  z-index: 300;
+}
+
+.task-actions-menu[open] {
+  z-index: 350;
+}
+
+.task-actions-menu-panel {
+  z-index: 5000 !important;
+}
+
+.subtask-list:has(.subtask-form),
+.subtask-list:has(.subtask-edit-form) {
+  z-index: 250;
+}
+
+.subtask-form,
+.subtask-edit-form {
+  z-index: 260;
+  align-items: center;
+}
+
+.subtask-form input[type="date"],
+.subtask-edit-form input[type="date"] {
+  min-width: 145px;
+}
+
+.subtask-due-date {
+  margin-left: auto;
+  white-space: nowrap;
+}
