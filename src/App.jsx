@@ -3051,7 +3051,7 @@ function Projects({
                       <span>{project.client || "No client"}</span>
                     </div>
                     <div className="project-summary-badges">
-                      <span>{taskSummary.incomplete} open task{taskSummary.incomplete === 1 ? "" : "s"}</span>
+                      <span className={taskSummary.incomplete > 0 ? "summary-open-tasks" : ""}>{taskSummary.incomplete} open task{taskSummary.incomplete === 1 ? "" : "s"}</span>
                       {taskSummary.overdue > 0 && (
                         <span className="summary-overdue">
                           {taskSummary.overdue} overdue
