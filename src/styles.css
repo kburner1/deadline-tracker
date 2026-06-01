@@ -5888,3 +5888,44 @@ details.task-actions-menu[open] {
     margin-left: 22px !important;
   }
 }
+
+/* ===============================
+   TASK TEXT LIGHTENING PASS
+   Task names are content rows, not section headers.
+================================ */
+
+.task-row > label {
+  font-size: 0.74rem !important;
+  font-weight: 550 !important;
+  line-height: 1.12 !important;
+  color: #263449 !important;
+}
+
+.task-row > label span {
+  font-weight: 550 !important;
+  line-height: 1.12 !important;
+}
+
+.task-row.task-complete > label span {
+  font-weight: 500 !important;
+}
+
+.subtask-row label {
+  font-size: 0.72rem !important;
+  font-weight: 500 !important;
+  line-height: 1.12 !important;
+}
+
+.subtask-row label span {
+  font-weight: 500 !important;
+}
+
+.task-row {
+  min-height: 30px !important;
+  padding-top: 4px !important;
+  padding-bottom: 4px !important;
+}
+
+.task-list {
+  gap: 4px !important;
+}
