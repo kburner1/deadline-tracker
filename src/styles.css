@@ -5443,3 +5443,98 @@ details.task-actions-menu > summary {
     margin-left: 20px !important;
   }
 }
+
+/* ===============================
+   TASK LAYOUT HOTFIX
+   The dense grid pass got too clever and could squeeze task titles into
+   ridiculous skinny columns. This switches task rows back to a stable,
+   compact flex layout while preserving menus, badges, notes, and subtasks.
+================================ */
+
+.task-row {
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+  flex-wrap: wrap !important;
+  grid-template-columns: none !important;
+}
+
+.task-row > .task-disclosure-button,
+.task-row > .disclosure-spacer {
+  flex: 0 0 24px !important;
+  width: 24px !important;
+  margin-top: 2px !important;
+  align-self: flex-start !important;
+}
+
+.task-row > .task-select-checkbox {
+  flex: 0 0 18px !important;
+  width: 18px !important;
+  margin-top: 5px !important;
+}
+
+.task-row > label {
+  flex: 1 1 320px !important;
+  min-width: 260px !important;
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: 8px !important;
+  padding-right: 6px !important;
+}
+
+.task-row > label span {
+  min-width: 0 !important;
+  overflow-wrap: normal !important;
+  word-break: normal !important;
+  white-space: normal !important;
+}
+
+.task-row > .task-meta {
+  flex: 0 1 auto !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 6px !important;
+  flex-wrap: wrap !important;
+  white-space: normal !important;
+  margin-left: auto !important;
+}
+
+.task-row > .waiting-badge,
+.task-row > .waiting-stale-badge,
+.task-row > .subtask-progress,
+.task-row > .task-notes {
+  flex: 1 0 calc(100% - 58px) !important;
+  margin-left: 50px !important;
+  width: auto !important;
+}
+
+.task-row > .task-notes {
+  margin-top: 0 !important;
+}
+
+.subtask-list {
+  margin-left: 42px !important;
+}
+
+@media (max-width: 720px) {
+  .task-row > label {
+    flex-basis: calc(100% - 58px) !important;
+    min-width: 0 !important;
+  }
+
+  .task-row > .task-meta {
+    flex: 1 0 calc(100% - 58px) !important;
+    margin-left: 50px !important;
+    justify-content: flex-start !important;
+  }
+
+  .task-row > .waiting-badge,
+  .task-row > .waiting-stale-badge,
+  .task-row > .subtask-progress,
+  .task-row > .task-notes {
+    flex-basis: calc(100% - 50px) !important;
+    margin-left: 50px !important;
+  }
+}
