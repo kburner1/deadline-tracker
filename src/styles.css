@@ -5103,3 +5103,343 @@ details.task-actions-menu > summary {
   margin-left: auto;
   white-space: nowrap;
 }
+
+/* =========================================================
+   PROJECTS TAB DENSITY PASS
+   Purpose: reduce scrolling in expanded project cards without changing behavior.
+========================================================= */
+.project-list {
+  gap: 8px;
+}
+
+.project-card {
+  margin-bottom: 8px;
+  padding: 8px 10px 9px;
+  border-radius: 7px;
+}
+
+.project-card-top {
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.project-title-block {
+  gap: 7px;
+  min-width: 0;
+}
+
+.project-disclosure-button {
+  width: 24px;
+  height: 24px;
+  flex-basis: 24px;
+  font-size: 13px;
+}
+
+.project-title-main-line {
+  gap: 7px;
+}
+
+.project-title-main-line h3,
+.project-title {
+  font-size: 1rem;
+  line-height: 1.05;
+}
+
+.project-number-compact,
+.project-number-line {
+  font-size: 0.74rem !important;
+  padding: 2px 7px;
+}
+
+.project-secondary-line {
+  gap: 8px;
+  margin-top: 2px;
+  font-size: 0.74rem;
+  line-height: 1.15;
+}
+
+.project-summary-badges {
+  margin-top: 4px;
+  gap: 5px;
+}
+
+.project-summary-badges span {
+  padding: 3px 7px;
+  font-size: 0.68rem;
+}
+
+.project-actions-compact {
+  gap: 5px;
+}
+
+.project-actions-compact .status-select {
+  min-height: 26px;
+  padding: 4px 22px 4px 8px;
+  font-size: 0.7rem;
+}
+
+.project-card-menu > summary {
+  width: 26px;
+  height: 24px;
+  font-size: 0.9rem;
+}
+
+.project-detail-panel {
+  display: grid;
+  gap: 8px;
+}
+
+.milestone-manager,
+.building-manager {
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.section-collapse-header,
+.building-collapse-header {
+  min-height: 30px;
+  padding: 6px 8px;
+  border-radius: 10px;
+}
+
+.section-title-wrap h4,
+.building-section-title {
+  font-size: 0.86rem;
+  line-height: 1.05;
+}
+
+.section-count-pill,
+.building-task-count {
+  font-size: 0.68rem;
+}
+
+.building-chip-list {
+  gap: 7px;
+}
+
+.building-task-card {
+  gap: 7px;
+  padding: 7px 8px;
+  border-radius: 11px;
+}
+
+.general-task-card {
+  border-style: solid;
+}
+
+.building-task-header {
+  align-items: center;
+  gap: 8px;
+}
+
+.building-title-stack {
+  gap: 1px;
+}
+
+.building-task-header .row-actions button,
+.milestone-row .row-actions button,
+.row-actions button {
+  padding: 4px 8px;
+  font-size: 0.72rem;
+}
+
+.milestone-row {
+  padding: 7px 8px;
+  border-radius: 10px;
+}
+
+.milestone-row strong {
+  font-size: 0.86rem;
+}
+
+.milestone-row span,
+.milestone-note {
+  font-size: 0.72rem;
+  line-height: 1.15;
+}
+
+.task-list {
+  gap: 4px;
+}
+
+.task-row {
+  min-height: 32px;
+  padding: 6px 8px !important;
+  border-radius: 10px;
+  column-gap: 6px !important;
+  row-gap: 4px !important;
+  grid-template-columns: 20px 16px minmax(190px, 1fr) auto !important;
+}
+
+.task-row > .task-disclosure-button,
+.task-row > .disclosure-spacer {
+  width: 20px;
+  height: 20px;
+  flex-basis: 20px;
+  font-size: 11px;
+}
+
+.task-row > .task-select-checkbox {
+  width: 14px;
+  height: 14px;
+}
+
+.task-row > label {
+  gap: 6px;
+  padding-right: 6px;
+  font-size: 0.82rem;
+  line-height: 1.15;
+}
+
+.task-row > label input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+}
+
+.task-meta {
+  gap: 4px;
+}
+
+.task-actions-menu > summary {
+  width: 24px;
+  height: 22px;
+  font-size: 0.85rem;
+}
+
+.task-assignee-select {
+  max-width: 104px;
+  padding: 3px 6px;
+  font-size: 0.68rem;
+}
+
+.task-due-date,
+.task-milestone-tag,
+.waiting-badge,
+.waiting-stale-badge,
+.subtask-progress {
+  padding: 2px 6px;
+  font-size: 0.66rem;
+}
+
+.task-notes {
+  margin-top: 0;
+  padding: 5px 7px;
+  font-size: 0.74rem;
+  line-height: 1.22;
+}
+
+.subtask-list {
+  gap: 3px;
+  margin-left: 38px !important;
+  padding-left: 9px;
+  border-left-width: 2px;
+}
+
+.subtask-row {
+  padding: 5px 7px;
+  border-radius: 9px;
+}
+
+.subtask-row label {
+  gap: 6px;
+  font-size: 0.78rem;
+  line-height: 1.15;
+}
+
+.subtask-actions {
+  gap: 5px;
+}
+
+.subtask-actions button,
+.subtask-row button {
+  padding: 3px 7px;
+  font-size: 0.68rem;
+}
+
+.task-form,
+.task-form-clean,
+.inline-form,
+.building-create-form,
+.subtask-form,
+.subtask-edit-form {
+  gap: 6px;
+  padding: 7px 8px;
+  border-radius: 10px;
+}
+
+.task-form input,
+.task-form select,
+.task-form textarea,
+.inline-form input,
+.inline-form select,
+.subtask-form input,
+.subtask-edit-form input,
+.building-create-form input {
+  padding: 5px 7px;
+  font-size: 0.78rem;
+  border-radius: 8px;
+}
+
+.task-form-field span,
+.inline-form label,
+.subtask-form label,
+.subtask-edit-form label {
+  font-size: 0.68rem;
+}
+
+.form-actions,
+.row-actions {
+  gap: 5px;
+}
+
+.form-actions button,
+.task-form button,
+.subtask-form button,
+.subtask-edit-form button,
+.building-create-form button {
+  padding: 5px 8px;
+  font-size: 0.72rem;
+}
+
+/* Hide completed tasks by default now does the heavy lifting; this keeps the control visible but compact. */
+.project-tools-section label.project-tool-checkbox-row {
+  min-height: 26px;
+}
+
+@media (max-width: 900px) {
+  .task-row {
+    grid-template-columns: 20px 16px minmax(0, 1fr) !important;
+  }
+
+  .task-row > .task-meta {
+    padding-left: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .project-card {
+    padding: 8px;
+  }
+
+  .project-card-top {
+    align-items: stretch;
+  }
+
+  .project-secondary-line {
+    display: none;
+  }
+
+  .task-row > .task-meta,
+  .task-row > .task-notes,
+  .task-row > .waiting-badge,
+  .task-row > .waiting-stale-badge,
+  .task-row > .subtask-progress {
+    margin-left: 38px;
+    padding-left: 0;
+  }
+
+  .subtask-list {
+    margin-left: 20px !important;
+  }
+}

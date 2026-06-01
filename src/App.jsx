@@ -1080,7 +1080,7 @@ function Projects({
       return [];
     }
   });
-  const [showCompletedTasks, setShowCompletedTasks] = useState(true);
+  const [showCompletedTasks, setShowCompletedTasks] = useState(false);
   const [showArchivedTasks, setShowArchivedTasks] = useState(false);
   const [hideCompletedProjects, setHideCompletedProjects] = useState(false);
   const [showArchivedProjects, setShowArchivedProjects] = useState(false);
