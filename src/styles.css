@@ -5578,3 +5578,82 @@ details.task-actions-menu[open] {
 .task-actions-menu-panel {
   z-index: 2000 !important;
 }
+
+/* Building section compact typography pass */
+.building-task-card {
+  padding: 6px 8px !important;
+  gap: 6px !important;
+  border-radius: 10px !important;
+}
+
+.building-task-header {
+  min-height: 28px !important;
+  gap: 6px !important;
+  align-items: center !important;
+}
+
+.building-task-header .building-collapse-header,
+.building-collapse-header,
+.general-collapse-button {
+  min-height: 26px !important;
+  padding: 4px 6px !important;
+  gap: 6px !important;
+}
+
+.building-title-stack {
+  gap: 0 !important;
+  line-height: 1.05 !important;
+}
+
+.building-task-header strong,
+.building-section-title,
+.building-title-stack strong {
+  font-size: 0.78rem !important;
+  line-height: 1.05 !important;
+  letter-spacing: -0.005em !important;
+}
+
+.building-task-header span,
+.building-title-stack span {
+  font-size: 0.66rem !important;
+  line-height: 1.05 !important;
+  margin-top: 0 !important;
+}
+
+.building-task-count {
+  min-height: 20px !important;
+  padding: 3px 6px !important;
+  font-size: 0.62rem !important;
+  line-height: 1 !important;
+}
+
+.building-task-header .row-actions,
+.building-task-header .task-meta {
+  gap: 5px !important;
+}
+
+.building-task-header .row-actions button,
+.building-task-header .compact-menu > summary,
+.building-task-header .compact-menu-panel button {
+  min-height: 24px !important;
+  padding: 3px 7px !important;
+  font-size: 0.68rem !important;
+}
+
+.building-chip-list {
+  gap: 5px !important;
+}
+
+.general-collapse-button .building-task-count::after {
+  content: "" !important;
+}
+
+@media (max-width: 720px) {
+  .building-task-header {
+    align-items: stretch !important;
+  }
+
+  .building-task-header .row-actions {
+    justify-content: flex-start !important;
+  }
+}
