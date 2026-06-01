@@ -5538,3 +5538,43 @@ details.task-actions-menu > summary {
     margin-left: 50px !important;
   }
 }
+
+/* Task menu stacking fix: keep open task menus above the rows below them. */
+.task-list,
+.building-task-card,
+.project-detail-panel,
+.project-card,
+.project-card-stacked {
+  overflow: visible;
+}
+
+.task-row {
+  position: relative;
+  z-index: 1;
+  overflow: visible;
+}
+
+.task-row:hover {
+  z-index: 20;
+}
+
+.task-row:has(details.task-actions-menu[open]),
+.task-row:has(.task-actions-menu[open]) {
+  z-index: 1000;
+}
+
+.building-task-card:has(details.task-actions-menu[open]),
+.project-card:has(details.task-actions-menu[open]),
+.project-card-stacked:has(details.task-actions-menu[open]) {
+  position: relative;
+  z-index: 900;
+}
+
+details.task-actions-menu[open] {
+  position: relative;
+  z-index: 1200;
+}
+
+.task-actions-menu-panel {
+  z-index: 2000 !important;
+}

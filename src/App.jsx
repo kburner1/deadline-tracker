@@ -127,10 +127,40 @@ function compareProjectNumbers(aProject, bProject) {
   );
 }
 
+function getProjectOpenParentTaskCount(project) {
+  const taskMap = new Map();
+
+  (project?.tasks || []).forEach((task) => {
+    if (task?.id) taskMap.set(task.id, task);
+  });
+
+  (project?.buildings || []).forEach((building) => {
+    (building.tasks || []).forEach((task) => {
+      if (task?.id) taskMap.set(task.id, task);
+    });
+  });
+
+  return Array.from(taskMap.values()).filter(
+    (task) => !task.is_archived && !task.parent_task_id && !task.is_complete
+  ).length;
+}
+
+function getProjectsTabRank(project) {
+  const status = project?.status || "Design";
+  const openTaskCount = getProjectOpenParentTaskCount(project);
+
+  if (status === "Design") return 0;
+  if (status === "CA" && openTaskCount > 0) return 1;
+  if (status === "CA") return 2;
+  if (status === "On Hold") return 3;
+  if (status === "Complete") return 4;
+  return getProjectStatusRank(status) + 10;
+}
+
 function sortProjectsByStatusThenNumber(projectList = []) {
   return [...projectList].sort(
     (a, b) =>
-      getProjectStatusRank(a.status) - getProjectStatusRank(b.status) ||
+      getProjectsTabRank(a) - getProjectsTabRank(b) ||
       compareProjectNumbers(a, b)
   );
 }
